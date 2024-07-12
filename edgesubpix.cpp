@@ -117,8 +117,8 @@ float chain(const cv::Point &from, const cv::Point &to, const cv::Mat &edge, con
     /* return the chaining score: positive for forward chaining,negative for backwards.
     the score is the inverse of the distance to the chaining point, to give preference to closer
     points */
-    const auto dist = cv::norm(delta);
-    if (fromProject >= 0.0) {
+    const float dist = sqrtf(delta.x * delta.x + delta.y * delta.y);
+    if (fromProject >= 0.0f) {
         return 1.0f / dist; /* forward chaining  */
     }
     return -1.0f / dist; /* backward chaining */
@@ -145,8 +145,8 @@ float chain(const cv::Point2f &edgeFrom,
     /* return the chaining score: positive for forward chaining,negative for backwards.
     the score is the inverse of the distance to the chaining point, to give preference to closer
     points */
-    const auto dist = cv::norm(delta);
-    if (fromProject >= 0.0) {
+    const float dist = sqrtf(delta.x * delta.x + delta.y * delta.y);
+    if (fromProject >= 0.0f) {
         return 1.0f / dist; /* forward chaining  */
     }
     return -1.0f / dist; /* backward chaining */
@@ -320,13 +320,13 @@ void thresholds_with_hysteresis(std::vector<std::list<cv::Point2f>> &points,
 
             path.emplace_back(edge.at<cv::Point2f>(lastPos));
             const auto &posGrad = grad.at<cv::Vec2s>(lastPos);
-            float       rMod    = sqrt(mod);
+            float       rMod    = sqrtf(mod);
             dir.emplace_back(posGrad[ 0 ] / rMod, posGrad[ 1 ] / rMod);
 
             /* follow the chain of edge points forwards */
             while (nextPos.x >= 0) {
-                mod  = (float)mag.at<unsigned short>(nextPos);
-                rMod = sqrt(mod);
+                mod  = mag.at<unsigned short>(nextPos);
+                rMod = sqrtf(mod);
                 path.emplace_back(edge.at<cv::Point2f>(nextPos));
                 const auto &posGrad = grad.at<cv::Vec2s>(nextPos);
                 dir.emplace_back(posGrad[ 0 ] / rMod, posGrad[ 1 ] / rMod);
@@ -338,8 +338,8 @@ void thresholds_with_hysteresis(std::vector<std::list<cv::Point2f>> &points,
 
             /* follow the chain of edge points backwards */
             while (prePos.x >= 0) {
-                mod  = (float)mag.at<unsigned short>(prePos);
-                rMod = sqrt(mod);
+                mod  = mag.at<unsigned short>(prePos);
+                rMod = sqrtf(mod);
                 path.emplace_back(edge.at<cv::Point2f>(prePos));
                 const auto &posGrad = grad.at<cv::Vec2s>(prePos);
                 dir.emplace_back(posGrad[ 0 ] / rMod, posGrad[ 1 ] / rMod);

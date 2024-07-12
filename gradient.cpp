@@ -138,13 +138,15 @@ void gradient(cv::InputArray  _src,
         // Process rest of columns 16-column chunks at a time
         for (j = 1; j < W - VTraits<v_uint8>::vlanes(); j += VTraits<v_uint8>::vlanes()) {
             // Load top row for 3x3 Sobel filter
-            v_uint8  v_um = vx_load(&p_src[ j - 1 ]);
-            v_uint8  v_un = vx_load(&p_src[ j ]);
-            v_uint8  v_up = vx_load(&p_src[ j + 1 ]);
             v_uint16 v_um1, v_um2, v_un1, v_un2, v_up1, v_up2;
-            v_expand(v_um, v_um1, v_um2);
-            v_expand(v_un, v_un1, v_un2);
-            v_expand(v_up, v_up1, v_up2);
+            {
+                v_uint8 v_um = vx_load(&p_src[ j - 1 ]);
+                v_uint8 v_un = vx_load(&p_src[ j ]);
+                v_uint8 v_up = vx_load(&p_src[ j + 1 ]);
+                v_expand(v_um, v_um1, v_um2);
+                v_expand(v_un, v_un1, v_un2);
+                v_expand(v_up, v_up1, v_up2);
+            }
             v_int16 v_s1m1 = v_reinterpret_as_s16(v_um1);
             v_int16 v_s1m2 = v_reinterpret_as_s16(v_um2);
             v_int16 v_s1n1 = v_reinterpret_as_s16(v_un1);
@@ -153,12 +155,14 @@ void gradient(cv::InputArray  _src,
             v_int16 v_s1p2 = v_reinterpret_as_s16(v_up2);
 
             // Load second row for 3x3 Sobel filter
-            v_um = vx_load(&c_src[ j - 1 ]);
-            v_un = vx_load(&c_src[ j ]);
-            v_up = vx_load(&c_src[ j + 1 ]);
-            v_expand(v_um, v_um1, v_um2);
-            v_expand(v_un, v_un1, v_un2);
-            v_expand(v_up, v_up1, v_up2);
+            {
+                auto v_um = vx_load(&c_src[ j - 1 ]);
+                auto v_un = vx_load(&c_src[ j ]);
+                auto v_up = vx_load(&c_src[ j + 1 ]);
+                v_expand(v_um, v_um1, v_um2);
+                v_expand(v_un, v_un1, v_un2);
+                v_expand(v_up, v_up1, v_up2);
+            }
             v_int16 v_s2m1 = v_reinterpret_as_s16(v_um1);
             v_int16 v_s2m2 = v_reinterpret_as_s16(v_um2);
             v_int16 v_s2n1 = v_reinterpret_as_s16(v_un1);
@@ -167,12 +171,14 @@ void gradient(cv::InputArray  _src,
             v_int16 v_s2p2 = v_reinterpret_as_s16(v_up2);
 
             // Load third row for 3x3 Sobel filter
-            v_um = vx_load(&n_src[ j - 1 ]);
-            v_un = vx_load(&n_src[ j ]);
-            v_up = vx_load(&n_src[ j + 1 ]);
-            v_expand(v_um, v_um1, v_um2);
-            v_expand(v_un, v_un1, v_un2);
-            v_expand(v_up, v_up1, v_up2);
+            {
+                auto v_um = vx_load(&n_src[ j - 1 ]);
+                auto v_un = vx_load(&n_src[ j ]);
+                auto v_up = vx_load(&n_src[ j + 1 ]);
+                v_expand(v_um, v_um1, v_um2);
+                v_expand(v_un, v_un1, v_un2);
+                v_expand(v_up, v_up1, v_up2);
+            }
             v_int16 v_s3m1 = v_reinterpret_as_s16(v_um1);
             v_int16 v_s3m2 = v_reinterpret_as_s16(v_um2);
             v_int16 v_s3n1 = v_reinterpret_as_s16(v_un1);
@@ -192,10 +198,18 @@ void gradient(cv::InputArray  _src,
                                                v_s3m1,
                                                v_s3n1,
                                                v_s3p1);
+            v_int16 v_dxy1, v_dxy2;
+            v_zip(v_sdx1, v_sdy1, v_dxy1, v_dxy2);
+            v_store(&c_grad[ 2 * j ], v_dxy1);
+            v_store(&c_grad[ 2 * j + VTraits<v_int16>::vlanes() ], v_dxy2);
 
-            v_int16 v_sdx2, v_sdy2;
-            spatialGradientKernel_vec<v_int16>(v_sdx2,
-                                               v_sdy2,
+            v_uint16 v_mag;
+            magKernel_vec(v_mag, v_sdx1, v_sdy1);
+            v_store(&c_mag[ j ], v_mag);
+
+            // v_int16 v_sdx2, v_sdy2;
+            spatialGradientKernel_vec<v_int16>(v_sdx1,
+                                               v_sdy1,
                                                v_s1m2,
                                                v_s1n2,
                                                v_s1p2,
@@ -206,28 +220,22 @@ void gradient(cv::InputArray  _src,
                                                v_s3p2);
 
             // Store
-            v_int16 v_dxy1, v_dxy2;
             v_zip(v_sdx1, v_sdy1, v_dxy1, v_dxy2);
-            v_store(&c_grad[ 2 * j ], v_dxy1);
-            v_store(&c_grad[ 2 * j + VTraits<v_int16>::vlanes() ], v_dxy2);
-
-            v_zip(v_sdx2, v_sdy2, v_dxy1, v_dxy2);
             v_store(&c_grad[ 2 * j + VTraits<v_int16>::vlanes() * 2 ], v_dxy1);
             v_store(&c_grad[ 2 * j + VTraits<v_int16>::vlanes() * 3 ], v_dxy2);
 
-            v_uint16 v_mag1, v_mag2;
-            magKernel_vec(v_mag1, v_sdx1, v_sdy1);
-            magKernel_vec(v_mag2, v_sdx2, v_sdy2);
-            v_store(&c_mag[ j ], v_mag1);
-            v_store(&c_mag[ j + VTraits<v_int16>::vlanes() ], v_mag2);
+            magKernel_vec(v_mag, v_sdx1, v_sdy1);
+            v_store(&c_mag[ j + VTraits<v_int16>::vlanes() ], v_mag);
 
             // Load fourth row for 3x3 Sobel filter
-            v_um = vx_load(&m_src[ j - 1 ]);
-            v_un = vx_load(&m_src[ j ]);
-            v_up = vx_load(&m_src[ j + 1 ]);
-            v_expand(v_um, v_um1, v_um2);
-            v_expand(v_un, v_un1, v_un2);
-            v_expand(v_up, v_up1, v_up2);
+            {
+                auto v_um = vx_load(&m_src[ j - 1 ]);
+                auto v_un = vx_load(&m_src[ j ]);
+                auto v_up = vx_load(&m_src[ j + 1 ]);
+                v_expand(v_um, v_um1, v_um2);
+                v_expand(v_un, v_un1, v_un2);
+                v_expand(v_up, v_up1, v_up2);
+            }
             v_int16 v_s4m1 = v_reinterpret_as_s16(v_um1);
             v_int16 v_s4m2 = v_reinterpret_as_s16(v_um2);
             v_int16 v_s4n1 = v_reinterpret_as_s16(v_un1);
@@ -246,9 +254,14 @@ void gradient(cv::InputArray  _src,
                                                v_s4m1,
                                                v_s4n1,
                                                v_s4p1);
+            v_zip(v_sdx1, v_sdy1, v_dxy1, v_dxy2);
+            v_store(&n_grad[ 2 * j ], v_dxy1);
+            v_store(&n_grad[ 2 * j + VTraits<v_int16>::vlanes() ], v_dxy2);
+            magKernel_vec(v_mag, v_sdx1, v_sdy1);
+            v_store(&n_mag[ j ], v_mag);
 
-            spatialGradientKernel_vec<v_int16>(v_sdx2,
-                                               v_sdy2,
+            spatialGradientKernel_vec<v_int16>(v_sdx1,
+                                               v_sdy1,
                                                v_s2m2,
                                                v_s2n2,
                                                v_s2p2,
@@ -259,18 +272,13 @@ void gradient(cv::InputArray  _src,
                                                v_s4p2);
 
             // Store
-            v_zip(v_sdx1, v_sdy1, v_dxy1, v_dxy2);
-            v_store(&n_grad[ 2 * j ], v_dxy1);
-            v_store(&n_grad[ 2 * j + VTraits<v_int16>::vlanes() ], v_dxy2);
 
-            v_zip(v_sdx2, v_sdy2, v_dxy1, v_dxy2);
+            v_zip(v_sdx1, v_sdy1, v_dxy1, v_dxy2);
             v_store(&n_grad[ 2 * j + VTraits<v_int16>::vlanes() * 2 ], v_dxy1);
             v_store(&n_grad[ 2 * j + VTraits<v_int16>::vlanes() * 3 ], v_dxy2);
 
-            magKernel_vec(v_mag1, v_sdx1, v_sdy1);
-            magKernel_vec(v_mag2, v_sdx2, v_sdy2);
-            v_store(&n_mag[ j ], v_mag1);
-            v_store(&n_mag[ j + VTraits<v_int16>::vlanes() ], v_mag2);
+            magKernel_vec(v_mag, v_sdx1, v_sdy1);
+            v_store(&n_mag[ j + VTraits<v_int16>::vlanes() ], v_mag);
         }
     }
     i_start = i;
