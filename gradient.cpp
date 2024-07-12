@@ -29,8 +29,8 @@ static inline void spatialGradientKernel_vec(T       &vx,
     T tmp_add = v_sub(v22, v00), tmp_sub = v_sub(v02, v20), tmp_x = v_sub(v12, v10),
       tmp_y = v_sub(v21, v01);
 
-    vx = v_add(v_add(v_add(tmp_add, tmp_sub), tmp_x), tmp_x);
-    vy = v_add(v_add(v_sub(tmp_add, tmp_sub), tmp_y), tmp_y);
+    vx = v_add(v_add(v_add(tmp_add, tmp_sub), tmp_x), tmp_x) >> 2;
+    vy = v_add(v_add(v_sub(tmp_add, tmp_sub), tmp_y), tmp_y) >> 2;
 }
 
 template <typename T>
@@ -48,22 +48,22 @@ static inline void spatialGradientKernel(T       &vx,
     // vy = (v22 - v00) + (v20 - v02) + 2 * (v21 - v01)
     T tmp_add = v22 - v00, tmp_sub = v02 - v20, tmp_x = v12 - v10, tmp_y = v21 - v01;
 
-    vx = tmp_add + tmp_sub + tmp_x + tmp_x;
-    vy = tmp_add - tmp_sub + tmp_y + tmp_y;
+    vx = (tmp_add + tmp_sub + tmp_x + tmp_x) >> 2;
+    vy = (tmp_add - tmp_sub + tmp_y + tmp_y) >> 2;
 }
 
 template <typename U, typename T>
 static inline void magKernel_vec(U &mag, const T &vx, const T &vy) {
-    auto normX = v_abs(vx) >> 2;
-    auto normY = v_abs(vy) >> 2;
+    auto normX = v_abs(vx);
+    auto normY = v_abs(vy);
 
     mag = normX * normX + normY * normY;
 }
 
 template <typename U, typename T> static inline void magKernel(U &mag, const T &vx, const T &vy) {
-    T normX = abs(vx) >> 2;
-    T normY = abs(vy) >> 2;
-    mag     = normX * normX + normY + normY;
+    uint16_t normX = abs(vx);
+    uint16_t normY = abs(vy);
+    mag            = normX * normX + normY + normY;
 }
 
 void gradient(cv::InputArray  _src,

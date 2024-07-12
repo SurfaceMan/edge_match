@@ -51,23 +51,23 @@ void compute_edge_points(cv::Mat &edge, const cv::Mat &mag, const cv::Mat &grad,
              is offset = (a - c) / 2(a - 2b + c),and because b >= a and b >= c, -0.5 <= offset <=
              0.5
               */
-            if (Dx > 0) {
+            if (Dy > 0) {
                 const float a      = sqrtf(D);
                 const float b      = sqrtf(mod);
                 const float c      = sqrtf(U);
                 const float offset = 0.5f * (a - c) / (a - b - b + c);
 
                 /* store edge point */
-                edge.at<cv::Point2f>({x, y}) = {x + offset * Dx, y + offset * Dy};
+                edge.at<cv::Point2f>({x, y}) = {(float)x, y + offset};
 
-            } else if (Dy > 0) {
-                const float a      = sqrtf(R);
+            } else if (Dx > 0) {
+                const float a      = sqrtf(L);
                 const float b      = sqrtf(mod);
-                const float c      = sqrtf(L);
+                const float c      = sqrtf(R);
                 const float offset = 0.5f * (a - c) / (a - b - b + c);
 
                 /* store edge point */
-                edge.at<cv::Point2f>({x, y}) = {x + offset * Dx, y + offset * Dy};
+                edge.at<cv::Point2f>({x, y}) = {x + offset, (float)y};
             }
         }
     }
@@ -292,47 +292,56 @@ void thresholds_with_hysteresis(std::vector<std::list<cv::Point2f>> &points,
         for (int col = 0; col < X; col++) {
             const cv::Point pos{col, row};
             auto            mod = (float)mag.at<unsigned short>(pos);
-            if (mod >= high) {
-                std::list<cv::Point2f> path;
-                std::list<cv::Vec2f>   dir;
-
-                path.emplace_back(edge.at<cv::Point2f>(pos));
-                const auto &posGrad = grad.at<cv::Vec2s>(pos);
-                dir.emplace_back(posGrad[ 0 ] / mod, posGrad[ 1 ] / mod);
-
-                /* follow the chain of edge points forwards */
-                cv::Point lastPos = pos;
-                cv::Point nextPos(-1, -1);
-                std::swap(next.at<cv::Point>(lastPos), nextPos);
-                while (nextPos.x >= 0) {
-                    mod = (float)mag.at<unsigned short>(nextPos);
-                    path.emplace_back(edge.at<cv::Point2f>(nextPos));
-                    const auto &posGrad = grad.at<cv::Vec2s>(nextPos);
-                    dir.emplace_back(posGrad[ 0 ] / mod, posGrad[ 1 ] / mod);
-
-                    lastPos = nextPos;
-                    nextPos = {-1, -1};
-                    std::swap(next.at<cv::Point>(lastPos), nextPos);
-                }
-
-                /* follow the chain of edge points backwards */
-                lastPos = pos;
-                cv::Point prePos(-1, -1);
-                std::swap(prev.at<cv::Point>(lastPos), prePos);
-                while (prePos.x >= 0) {
-                    mod = (float)mag.at<unsigned short>(prePos);
-                    path.emplace_back(edge.at<cv::Point2f>(prePos));
-                    const auto &posGrad = grad.at<cv::Vec2s>(prePos);
-                    dir.emplace_back(posGrad[ 0 ] / mod, posGrad[ 1 ] / mod);
-
-                    lastPos = prePos;
-                    prePos  = {-1, -1};
-                    std::swap(prev.at<cv::Point>(lastPos), prePos);
-                }
-
-                points.emplace_back(std::move(path));
-                dirs.emplace_back(std::move(dir));
+            if (mod < high) {
+                continue;
             }
+
+            cv::Point lastPos = pos;
+            cv::Point nextPos(-1, -1);
+            std::swap(next.at<cv::Point>(lastPos), nextPos);
+            cv::Point prePos(-1, -1);
+            std::swap(prev.at<cv::Point>(lastPos), prePos);
+
+            if (nextPos.x < 0 && nextPos.x < 0) {
+                continue;
+            }
+
+            std::list<cv::Point2f> path;
+            std::list<cv::Vec2f>   dir;
+
+            path.emplace_back(edge.at<cv::Point2f>(pos));
+            const auto &posGrad = grad.at<cv::Vec2s>(pos);
+            float       rMod    = sqrt(mod);
+            dir.emplace_back(posGrad[ 0 ] / rMod, posGrad[ 1 ] / rMod);
+
+            /* follow the chain of edge points forwards */
+            while (nextPos.x >= 0) {
+                mod  = (float)mag.at<unsigned short>(nextPos);
+                rMod = sqrt(mod);
+                path.emplace_back(edge.at<cv::Point2f>(nextPos));
+                const auto &posGrad = grad.at<cv::Vec2s>(nextPos);
+                dir.emplace_back(posGrad[ 0 ] / rMod, posGrad[ 1 ] / rMod);
+
+                lastPos = nextPos;
+                nextPos = {-1, -1};
+                std::swap(next.at<cv::Point>(lastPos), nextPos);
+            }
+
+            /* follow the chain of edge points backwards */
+            while (prePos.x >= 0) {
+                mod  = (float)mag.at<unsigned short>(prePos);
+                rMod = sqrt(mod);
+                path.emplace_back(edge.at<cv::Point2f>(prePos));
+                const auto &posGrad = grad.at<cv::Vec2s>(prePos);
+                dir.emplace_back(posGrad[ 0 ] / rMod, posGrad[ 1 ] / rMod);
+
+                lastPos = prePos;
+                prePos  = {-1, -1};
+                std::swap(prev.at<cv::Point>(lastPos), prePos);
+            }
+
+            points.emplace_back(std::move(path));
+            dirs.emplace_back(std::move(dir));
         }
     }
 }
