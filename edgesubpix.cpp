@@ -15,10 +15,10 @@ void compute_edge_points(cv::Mat &edge, const cv::Mat &mag, const cv::Mat &grad,
                 continue;
             }
 
-            const auto L = mag.at<unsigned short>({x - 1, y});   /* modG at pixel on the left	*/
-            const auto R = mag.at<unsigned short>({x + 1, y});   /* modG at pixel on the right	*/
-            const auto U = mag.at<unsigned short>({x, (y + 1)}); /* modG at pixel up			*/
-            const auto D = mag.at<unsigned short>({x, (y - 1)}); /* modG at pixel below			*/
+            const auto L = magPtr[ x - 1 ];              /* modG at pixel on the left	*/
+            const auto R = magPtr[ x + 1 ];              /* modG at pixel on the right	*/
+            const auto U = (magPtr + mag.step / 2)[ x ]; /* modG at pixel up			*/
+            const auto D = (magPtr - mag.step / 2)[ x ]; /* modG at pixel below			*/
 
             const auto &gradVal = grad.at<cv::Vec2s>({x, y});
             const auto  gx      = abs(gradVal[ 0 ]); /* absolute value of Gx			*/
@@ -126,16 +126,8 @@ float chain(const cv::Point &from, const cv::Point &to, const cv::Mat &edge, con
 
 float chain(const cv::Point2f &edgeFrom,
             const cv::Vec2s   &gradFrom,
-            const cv::Point   &to,
-            const cv::Mat     &edge,
-            const cv::Mat     &grad) {
-    const auto edgeTo = edge.at<cv::Point2f>(to);
-    if (edgeTo.x < 0.0) {
-        return 0.0; // one of them is not an edge point, not a valid chaining
-    }
-
-    const auto gradTo = grad.at<cv::Vec2s>(to);
-
+            const cv::Point2f &neighborEdge,
+            const cv::Vec2s   &neighborGrad) {
     /* in a good chaining, the gradient should be roughly orthogonal
     to the line joining the two points to be chained:
     when Gy * dx - Gx * dy > 0, it corresponds to a forward chaining,
@@ -143,9 +135,9 @@ float chain(const cv::Point2f &edgeFrom,
 
      first check that the gradient at both points to be chained agree
      in one direction, otherwise return invalid chaining. */
-    const auto delta       = edgeTo - edgeFrom;
+    const auto delta       = neighborEdge - edgeFrom;
     const auto fromProject = gradFrom[ 1 ] * delta.x - gradFrom[ 0 ] * delta.y;
-    const auto toProject   = gradTo[ 1 ] * delta.x - gradTo[ 0 ] * delta.y;
+    const auto toProject   = neighborGrad[ 1 ] * delta.x - neighborGrad[ 0 ] * delta.y;
     if (fromProject * toProject <= 0.0) {
         return 0.0; /* incompatible gradient angles, not a valid chaining */
     }
@@ -197,14 +189,23 @@ void chain_edge_points(cv::Mat &next, cv::Mat &prev, const cv::Mat &edge, const 
 
             const auto &posGrad = grad.at<cv::Vec2s>(pos);
             for (int i = -2; i <= 2; i++) {
+                auto *edgePtr2 = edge.ptr<cv::Point2f>(y + i);
+                auto *gradPtr2 = grad.ptr<cv::Vec2s>(y + i);
                 for (int j = -2; j <= 2; j++) {
                     if (i == 0 && j == 0) {
                         continue;
                     }
 
-                    cv::Point  neighbor(x + i, y + j); /* candidate edge point to be chained */
+                    const auto &neighborEdge = edgePtr2[ x + j ];
+                    if (neighborEdge.x < 0) {
+                        continue;
+                    }
+
+                    const auto &neighborGrad = gradPtr2[ x + j ];
+
+                    cv::Point  neighbor(x + j, y + i); /* candidate edge point to be chained */
                     const auto score =
-                        chain(posEdge, posGrad, neighbor, edge, grad); /* score from-to */
+                        chain(posEdge, posGrad, neighborEdge, neighborGrad); /* score from-to */
 
                     if (score > forwardScore) /* a better forward chaining found    */
                     {
@@ -222,7 +223,7 @@ void chain_edge_points(cv::Mat &next, cv::Mat &prev, const cv::Mat &edge, const 
             if (posForward.x >= 0) {
                 auto &posNext = next.at<cv::Point>(pos);
                 if (posNext != posForward) {
-                    const auto &forwardPre = prev.at<cv::Point>(posForward);
+                    auto &forwardPre = prev.at<cv::Point>(posForward);
                     if (forwardPre.x < 0 ||
                         chain(forwardPre, posForward, edge, grad) < forwardScore) {
 
@@ -240,7 +241,7 @@ void chain_edge_points(cv::Mat &next, cv::Mat &prev, const cv::Mat &edge, const 
                         if (forwardPre.x >= 0) {
                             next.at<cv::Point>(forwardPre) = {-1, -1};
                         }
-                        prev.at<cv::Point>(posForward) = pos;
+                        forwardPre = pos;
                     }
                 }
             }
@@ -248,7 +249,7 @@ void chain_edge_points(cv::Mat &next, cv::Mat &prev, const cv::Mat &edge, const 
             if (posBackward.x >= 0) {
                 auto &posPre = prev.at<cv::Point>(pos);
                 if (posPre != posBackward) {
-                    const auto &backwardNext = next.at<cv::Point>(posBackward);
+                    auto &backwardNext = next.at<cv::Point>(posBackward);
                     if (backwardNext.x < 0 ||
                         chain(backwardNext, posBackward, edge, grad) > backwardScore) {
 
@@ -258,7 +259,7 @@ void chain_edge_points(cv::Mat &next, cv::Mat &prev, const cv::Mat &edge, const 
                         if (backwardNext.x >= 0) {
                             prev.at<cv::Point>(backwardNext) = {-1, -1};
                         }
-                        next.at<cv::Point>(posBackward) = pos;
+                        backwardNext = pos;
 
                         /* remove previous x-from link if one */
                         /* only next requires explicit reset  */
