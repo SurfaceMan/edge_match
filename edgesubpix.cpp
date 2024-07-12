@@ -219,50 +219,55 @@ void chain_edge_points(cv::Mat &next, cv::Mat &prev, const cv::Mat &edge, const 
                 }
             }
 
-            auto &posNext = next.at<cv::Point>(pos);
-            if (posForward.x >= 0 && posNext != posForward) {
-                const auto &forwardPre = prev.at<cv::Point>(posForward);
-                if (forwardPre.x < 0 || chain(forwardPre, posForward, edge, grad) < forwardScore) {
+            if (posForward.x >= 0) {
+                auto &posNext = next.at<cv::Point>(pos);
+                if (posNext != posForward) {
+                    const auto &forwardPre = prev.at<cv::Point>(posForward);
+                    if (forwardPre.x < 0 ||
+                        chain(forwardPre, posForward, edge, grad) < forwardScore) {
 
-                    /* remove previous from-x link if one */
-                    /* only prev requires explicit reset  */
-                    /* set next of from-fwd link          */
-                    if (posNext.x >= 0) {
-                        prev.at<cv::Point>(posNext) = {-1, -1};
-                    }
-                    posNext = posForward;
+                        /* remove previous from-x link if one */
+                        /* only prev requires explicit reset  */
+                        /* set next of from-fwd link          */
+                        if (posNext.x >= 0) {
+                            prev.at<cv::Point>(posNext) = {-1, -1};
+                        }
+                        posNext = posForward;
 
-                    /* remove alt-fwd link if one         */
-                    /* only next requires explicit reset  */
-                    /* set prev of from-fwd link          */
-                    if (forwardPre.x >= 0) {
-                        next.at<cv::Point>(forwardPre) = {-1, -1};
+                        /* remove alt-fwd link if one         */
+                        /* only next requires explicit reset  */
+                        /* set prev of from-fwd link          */
+                        if (forwardPre.x >= 0) {
+                            next.at<cv::Point>(forwardPre) = {-1, -1};
+                        }
+                        prev.at<cv::Point>(posForward) = pos;
                     }
-                    prev.at<cv::Point>(posForward) = pos;
                 }
             }
 
-            auto &posPre = prev.at<cv::Point>(pos);
-            if (posBackward.x >= 0 && posPre != posBackward) {
-                const auto &backwardNext = next.at<cv::Point>(posBackward);
-                if (backwardNext.x < 0 ||
-                    chain(backwardNext, posBackward, edge, grad) > backwardScore) {
+            if (posBackward.x >= 0) {
+                auto &posPre = prev.at<cv::Point>(pos);
+                if (posPre != posBackward) {
+                    const auto &backwardNext = next.at<cv::Point>(posBackward);
+                    if (backwardNext.x < 0 ||
+                        chain(backwardNext, posBackward, edge, grad) > backwardScore) {
 
-                    /* remove bck-alt link if one         */
-                    /* only prev requires explicit reset  */
-                    /* set next of bck-from link          */
-                    if (backwardNext.x >= 0) {
-                        prev.at<cv::Point>(backwardNext) = {-1, -1};
-                    }
-                    next.at<cv::Point>(posBackward) = pos;
+                        /* remove bck-alt link if one         */
+                        /* only prev requires explicit reset  */
+                        /* set next of bck-from link          */
+                        if (backwardNext.x >= 0) {
+                            prev.at<cv::Point>(backwardNext) = {-1, -1};
+                        }
+                        next.at<cv::Point>(posBackward) = pos;
 
-                    /* remove previous x-from link if one */
-                    /* only next requires explicit reset  */
-                    /* set prev of bck-from link          */
-                    if (posPre.x >= 0) {
-                        next.at<cv::Point>(posPre) = {-1, -1};
+                        /* remove previous x-from link if one */
+                        /* only next requires explicit reset  */
+                        /* set prev of bck-from link          */
+                        if (posPre.x >= 0) {
+                            next.at<cv::Point>(posPre) = {-1, -1};
+                        }
+                        posPre = posBackward;
                     }
-                    posPre = posBackward;
                 }
             }
         }
