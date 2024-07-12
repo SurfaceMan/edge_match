@@ -8,8 +8,9 @@ void compute_edge_points(cv::Mat &edge, const cv::Mat &mag, const cv::Mat &grad,
 
     /* explore pixels inside a 2 pixel margin (so modG[x,y +/- 1,1] is defined) */
     for (int y = 2; y < (Y - 2); y++) {
+        auto *magPtr = mag.ptr<unsigned short>(y);
         for (int x = 2; x < (X - 2); x++) {
-            const auto mod = mag.at<unsigned short>({x, y}); /* modG at pixel					*/
+            const auto mod = magPtr[ x ]; /* modG at pixel					*/
             if (mod < low) {
                 continue;
             }
@@ -174,13 +175,15 @@ void chain_edge_points(cv::Mat &next, cv::Mat &prev, const cv::Mat &edge, const 
 
     /* try each point to make local chains */
     for (int y = 2; y < (Y - 2); y++) { /* 2 pixel margin to include the tested neighbors */
+        auto *edgePtr = edge.ptr<cv::Point2f>(y);
         for (int x = 2; x < (X - 2); x++) {
-            const cv::Point pos(x, y); /* edge point to be chained			*/
-                                       /* must be an edge point */
-            const auto &posEdge = edge.at<cv::Point2f>(pos);
+            const auto &posEdge = edgePtr[ x ];
             if (posEdge.x < 0.0) {
                 continue;
             }
+
+            const cv::Point pos(x, y); /* edge point to be chained			*/
+                                       /* must be an edge point */
 
             float     forwardScore  = 0.0;      /* score of best forward chaining		*/
             float     backwardScore = 0.0;      /* score of best backward chaining		*/
@@ -289,14 +292,14 @@ void thresholds_with_hysteresis(std::vector<std::list<cv::Point2f>> &points,
 
     /* validate all edge points over th_h or connected to them and over th_l */
     for (int row = 0; row < Y; row++) { /* prev[i]>=0 or next[i]>=0 implies an edge point */
+        auto *magPtr = mag.ptr<unsigned short>(row);
         for (int col = 0; col < X; col++) {
-            const cv::Point pos{col, row};
-            auto            mod = (float)mag.at<unsigned short>(pos);
+            auto mod = magPtr[ col ];
             if (mod < high) {
                 continue;
             }
 
-            cv::Point lastPos = pos;
+            cv::Point lastPos = {col, row};
             cv::Point nextPos(-1, -1);
             std::swap(next.at<cv::Point>(lastPos), nextPos);
             cv::Point prePos(-1, -1);
@@ -309,8 +312,8 @@ void thresholds_with_hysteresis(std::vector<std::list<cv::Point2f>> &points,
             std::list<cv::Point2f> path;
             std::list<cv::Vec2f>   dir;
 
-            path.emplace_back(edge.at<cv::Point2f>(pos));
-            const auto &posGrad = grad.at<cv::Vec2s>(pos);
+            path.emplace_back(edge.at<cv::Point2f>(lastPos));
+            const auto &posGrad = grad.at<cv::Vec2s>(lastPos);
             float       rMod    = sqrt(mod);
             dir.emplace_back(posGrad[ 0 ] / rMod, posGrad[ 1 ] / rMod);
 
@@ -370,8 +373,8 @@ void EdgePoint(const cv::Mat                       &img,
     // inter
     cv::Mat edge(img.size(), CV_32FC2, {-1.f, -1.f});
 
-    cv::Mat next(img.size(), CV_32SC2, {-1.f, -1.f});
-    cv::Mat prev(img.size(), CV_32SC2, {-1.f, -1.f});
+    cv::Mat next(img.size(), CV_32SC2, {-1, -1});
+    cv::Mat prev(img.size(), CV_32SC2, {-1, -1});
 
     start = cv::getTickCount();
     compute_edge_points(edge, mag, grad, low);
