@@ -342,7 +342,10 @@ void thresholds_with_hysteresis(std::vector<std::vector<cv::Point2f>> &points,
                 std::swap(prev.at<cv::Point>(lastPos), prePos);
             }
 
-            for (auto iter = preLink.rbegin(); iter != preLink.rend(); iter++) {
+            const auto size = preLink.size() + 100;
+            path.reserve(size);
+            dir.reserve(size);
+            for (auto iter = preLink.rbegin(); iter != preLink.rend(); ++iter) {
                 const auto &pos = *iter;
                 mod             = mag.at<unsigned short>(pos);
                 rMod            = sqrtf(mod);
