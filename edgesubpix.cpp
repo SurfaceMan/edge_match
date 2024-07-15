@@ -291,14 +291,14 @@ the image size. th_h and th_l are the high and low thresholds, respectively.
 this function modifies next and prev, removing chains not satisfying the
 thresholds.
 */
-void thresholds_with_hysteresis(std::vector<std::list<cv::Point2f>> &points,
-                                std::vector<std::list<cv::Vec2f>>   &dirs,
-                                cv::Mat                             &next,
-                                cv::Mat                             &prev,
-                                const cv::Mat                       &mag,
-                                const cv::Mat                       &edge,
-                                const cv::Mat                       &grad,
-                                float                                high) {
+void thresholds_with_hysteresis(std::vector<std::vector<cv::Point2f>> &points,
+                                std::vector<std::vector<cv::Vec2f>>   &dirs,
+                                cv::Mat                               &next,
+                                cv::Mat                               &prev,
+                                const cv::Mat                         &mag,
+                                const cv::Mat                         &edge,
+                                const cv::Mat                         &grad,
+                                float                                  high) {
     const int X = mag.size().width;
     const int Y = mag.size().height;
 
@@ -323,13 +323,33 @@ void thresholds_with_hysteresis(std::vector<std::list<cv::Point2f>> &points,
                 continue;
             }
 
-            std::list<cv::Point2f> path;
-            std::list<cv::Vec2f>   dir;
+            std::vector<cv::Point2f> path;
+            std::vector<cv::Vec2f>   dir;
 
             path.emplace_back(edge.at<cv::Point2f>(lastPos));
             const auto &posGrad = grad.at<cv::Vec2s>(lastPos);
             float       rMod    = sqrtf(mod);
             dir.emplace_back(posGrad[ 0 ] / rMod, posGrad[ 1 ] / rMod);
+
+            /* follow the chain of edge points backwards */
+            std::vector<cv::Point> preLink;
+            while (prePos.x >= 0) {
+                preLink.emplace_back(prePos);
+
+                next.at<cv::Point>(lastPos) = {-1, -1};
+                lastPos                     = prePos;
+                prePos                      = {-1, -1};
+                std::swap(prev.at<cv::Point>(lastPos), prePos);
+            }
+
+            for (auto iter = preLink.rbegin(); iter != preLink.rend(); iter++) {
+                const auto &pos = *iter;
+                mod             = mag.at<unsigned short>(pos);
+                rMod            = sqrtf(mod);
+                path.emplace_back(edge.at<cv::Point2f>(pos));
+                const auto &posGrad = grad.at<cv::Vec2s>(pos);
+                dir.emplace_back(posGrad[ 0 ] / rMod, posGrad[ 1 ] / rMod);
+            }
 
             /* follow the chain of edge points forwards */
             while (nextPos.x >= 0) {
@@ -340,23 +360,9 @@ void thresholds_with_hysteresis(std::vector<std::list<cv::Point2f>> &points,
                 dir.emplace_back(posGrad[ 0 ] / rMod, posGrad[ 1 ] / rMod);
 
                 prev.at<cv::Point>(lastPos) = {-1, -1};
-                lastPos = nextPos;
-                nextPos = {-1, -1};
+                lastPos                     = nextPos;
+                nextPos                     = {-1, -1};
                 std::swap(next.at<cv::Point>(lastPos), nextPos);
-            }
-
-            /* follow the chain of edge points backwards */
-            while (prePos.x >= 0) {
-                mod  = mag.at<unsigned short>(prePos);
-                rMod = sqrtf(mod);
-                path.emplace_back(edge.at<cv::Point2f>(prePos));
-                const auto &posGrad = grad.at<cv::Vec2s>(prePos);
-                dir.emplace_back(posGrad[ 0 ] / rMod, posGrad[ 1 ] / rMod);
-
-                next.at<cv::Point>(lastPos) = {-1, -1};
-                lastPos = prePos;
-                prePos  = {-1, -1};
-                std::swap(prev.at<cv::Point>(lastPos), prePos);
             }
 
             points.emplace_back(std::move(path));
@@ -365,12 +371,12 @@ void thresholds_with_hysteresis(std::vector<std::list<cv::Point2f>> &points,
     }
 }
 
-void EdgePoint(const cv::Mat                       &img,
-               std::vector<std::list<cv::Point2f>> &points,
-               std::vector<std::list<cv::Vec2f>>   &dirs,
-               float                                sigma,
-               float                                low,
-               float                                high) {
+void EdgePoint(const cv::Mat                         &img,
+               std::vector<std::vector<cv::Point2f>> &points,
+               std::vector<std::vector<cv::Vec2f>>   &dirs,
+               float                                  sigma,
+               float                                  low,
+               float                                  high) {
 
     cv::Mat blured;
     cv::Mat mag;
