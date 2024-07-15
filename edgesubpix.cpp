@@ -2,16 +2,17 @@
 #include "gradient.h"
 
 void compute_edge_points(cv::Mat &edge, const cv::Mat &mag, const cv::Mat &grad, float low) {
-    const int X  = grad.size().width;
-    const int Y  = grad.size().height;
-    low         *= low;
+    const int X = grad.size().width;
+    const int Y = grad.size().height;
+
+    const auto squareLow = static_cast<unsigned short>(low * low);
 
     /* explore pixels inside a 2 pixel margin (so modG[x,y +/- 1,1] is defined) */
     for (int y = 2; y < (Y - 2); y++) {
         auto *magPtr = mag.ptr<unsigned short>(y);
         for (int x = 2; x < (X - 2); x++) {
             const auto mod = magPtr[ x ]; /* modG at pixel					*/
-            if (mod < low) {
+            if (mod < squareLow) {
                 continue;
             }
 
@@ -37,9 +38,9 @@ void compute_edge_points(cv::Mat &edge, const cv::Mat &mag, const cv::Mat &grad,
 
             int Dx = 0; /* interpolation is along Dx,Dy		*/
             int Dy = 0; /* which will be selected below		*/
-            if ((mod > L) && !(R > mod) && gx >= gy) {
+            if (mod > L && R <= mod && gx >= gy) {
                 Dx = 1; /* H */
-            } else if ((mod > D) && !(U > mod) && gx <= gy) {
+            } else if (mod > D && U <= mod && gx <= gy) {
                 Dy = 1; /* V */
             }
             /* Devernay sub-pixel correction
@@ -59,7 +60,8 @@ void compute_edge_points(cv::Mat &edge, const cv::Mat &mag, const cv::Mat &grad,
                 const float offset = 0.5f * (a - c) / (a - b - b + c);
 
                 /* store edge point */
-                edge.at<cv::Point2f>({x, y}) = {(float)x, y + offset};
+                edge.at<cv::Point2f>({x, y}) = {static_cast<float>(x),
+                                                static_cast<float>(y) + offset};
 
             } else if (Dx > 0) {
                 const float a      = sqrtf(L);
@@ -68,7 +70,8 @@ void compute_edge_points(cv::Mat &edge, const cv::Mat &mag, const cv::Mat &grad,
                 const float offset = 0.5f * (a - c) / (a - b - b + c);
 
                 /* store edge point */
-                edge.at<cv::Point2f>({x, y}) = {x + offset, (float)y};
+                edge.at<cv::Point2f>({x, y}) = {static_cast<float>(x) + offset,
+                                                static_cast<float>(y)};
             }
         }
     }
@@ -97,8 +100,8 @@ float chain(const cv::Point &from, const cv::Point &to, const cv::Mat &edge, con
         return 0.0; // one of them is not an edge point, not a valid chaining
     }
 
-    const auto gradFrom = grad.at<cv::Vec2s>(from);
-    const auto gradTo   = grad.at<cv::Vec2s>(to);
+    const auto &gradFrom = grad.at<cv::Vec2s>(from);
+    const auto &gradTo   = grad.at<cv::Vec2s>(to);
 
     /* in a good chaining, the gradient should be roughly orthogonal
     to the line joining the two points to be chained:
@@ -107,11 +110,13 @@ float chain(const cv::Point &from, const cv::Point &to, const cv::Mat &edge, con
 
      first check that the gradient at both points to be chained agree
      in one direction, otherwise return invalid chaining. */
-    const auto delta       = edgeTo - edgeFrom;
-    const auto fromProject = gradFrom[ 1 ] * delta.x - gradFrom[ 0 ] * delta.y;
-    const auto toProject   = gradTo[ 1 ] * delta.x - gradTo[ 0 ] * delta.y;
-    if (fromProject * toProject <= 0.0) {
-        return 0.0; /* incompatible gradient angles, not a valid chaining */
+    const auto delta = edgeTo - edgeFrom;
+    const auto fromProject =
+        static_cast<float>(gradFrom[ 1 ]) * delta.x - static_cast<float>(gradFrom[ 0 ]) * delta.y;
+    const auto toProject =
+        static_cast<float>(gradTo[ 1 ]) * delta.x - static_cast<float>(gradTo[ 0 ]) * delta.y;
+    if (fromProject * toProject <= 0.0f) {
+        return 0.0f; /* incompatible gradient angles, not a valid chaining */
     }
 
     /* return the chaining score: positive for forward chaining,negative for backwards.
@@ -135,11 +140,13 @@ float chain(const cv::Point2f &edgeFrom,
 
      first check that the gradient at both points to be chained agree
      in one direction, otherwise return invalid chaining. */
-    const auto delta       = neighborEdge - edgeFrom;
-    const auto fromProject = gradFrom[ 1 ] * delta.x - gradFrom[ 0 ] * delta.y;
-    const auto toProject   = neighborGrad[ 1 ] * delta.x - neighborGrad[ 0 ] * delta.y;
-    if (fromProject * toProject <= 0.0) {
-        return 0.0; /* incompatible gradient angles, not a valid chaining */
+    const auto delta = neighborEdge - edgeFrom;
+    const auto fromProject =
+        static_cast<float>(gradFrom[ 1 ]) * delta.x - static_cast<float>(gradFrom[ 0 ]) * delta.y;
+    const auto toProject = static_cast<float>(neighborGrad[ 1 ]) * delta.x -
+                           static_cast<float>(neighborGrad[ 0 ]) * delta.y;
+    if (fromProject * toProject <= 0.0f) {
+        return 0.0f; /* incompatible gradient angles, not a valid chaining */
     }
 
     /* return the chaining score: positive for forward chaining,negative for backwards.
@@ -203,8 +210,8 @@ void chain_edge_points(cv::Mat &next, cv::Mat &prev, const cv::Mat &edge, const 
 
                     const auto &neighborGrad = gradPtr2[ x + j ];
 
-                    cv::Point  neighbor(x + j, y + i); /* candidate edge point to be chained */
-                    const auto score =
+                    const cv::Point neighbor(x + j, y + i); /* candidate edge point to be chained */
+                    const auto      score =
                         chain(posEdge, posGrad, neighborEdge, neighborGrad); /* score from-to */
 
                     if (score > forwardScore) /* a better forward chaining found    */
@@ -292,16 +299,17 @@ void thresholds_with_hysteresis(std::vector<std::list<cv::Point2f>> &points,
                                 const cv::Mat                       &edge,
                                 const cv::Mat                       &grad,
                                 float                                high) {
-    const int X  = mag.size().width;
-    const int Y  = mag.size().height;
-    high        *= high;
+    const int X = mag.size().width;
+    const int Y = mag.size().height;
+
+    const auto squareHigh = static_cast<unsigned short>(high * high);
 
     /* validate all edge points over th_h or connected to them and over th_l */
     for (int row = 0; row < Y; row++) { /* prev[i]>=0 or next[i]>=0 implies an edge point */
         auto *magPtr = mag.ptr<unsigned short>(row);
         for (int col = 0; col < X; col++) {
             auto mod = magPtr[ col ];
-            if (mod < high) {
+            if (mod < squareHigh) {
                 continue;
             }
 
@@ -311,7 +319,7 @@ void thresholds_with_hysteresis(std::vector<std::list<cv::Point2f>> &points,
             cv::Point prePos(-1, -1);
             std::swap(prev.at<cv::Point>(lastPos), prePos);
 
-            if (nextPos.x < 0 && nextPos.x < 0) {
+            if (nextPos.x < 0 && prePos.x < 0) {
                 continue;
             }
 
@@ -331,6 +339,7 @@ void thresholds_with_hysteresis(std::vector<std::list<cv::Point2f>> &points,
                 const auto &posGrad = grad.at<cv::Vec2s>(nextPos);
                 dir.emplace_back(posGrad[ 0 ] / rMod, posGrad[ 1 ] / rMod);
 
+                prev.at<cv::Point>(lastPos) = {-1, -1};
                 lastPos = nextPos;
                 nextPos = {-1, -1};
                 std::swap(next.at<cv::Point>(lastPos), nextPos);
@@ -344,6 +353,7 @@ void thresholds_with_hysteresis(std::vector<std::list<cv::Point2f>> &points,
                 const auto &posGrad = grad.at<cv::Vec2s>(prePos);
                 dir.emplace_back(posGrad[ 0 ] / rMod, posGrad[ 1 ] / rMod);
 
+                next.at<cv::Point>(lastPos) = {-1, -1};
                 lastPos = prePos;
                 prePos  = {-1, -1};
                 std::swap(prev.at<cv::Point>(lastPos), prePos);
