@@ -6,7 +6,7 @@ void compute_edge_points(cv::Mat &edge, const cv::Mat &mag, const cv::Mat &grad,
     const int Y = grad.size().height;
 
     const auto squareLow = static_cast<unsigned short>(low * low);
-
+    const auto step      = mag.step / 2;
     /* explore pixels inside a 2 pixel margin (so modG[x,y +/- 1,1] is defined) */
     for (int y = 2; y < (Y - 2); y++) {
         auto *magPtr = mag.ptr<unsigned short>(y);
@@ -16,10 +16,10 @@ void compute_edge_points(cv::Mat &edge, const cv::Mat &mag, const cv::Mat &grad,
                 continue;
             }
 
-            const auto L = magPtr[ x - 1 ];              /* modG at pixel on the left	*/
-            const auto R = magPtr[ x + 1 ];              /* modG at pixel on the right	*/
-            const auto U = (magPtr + mag.step / 2)[ x ]; /* modG at pixel up			*/
-            const auto D = (magPtr - mag.step / 2)[ x ]; /* modG at pixel below			*/
+            const auto L = magPtr[ x - 1 ];      /* modG at pixel on the left	*/
+            const auto R = magPtr[ x + 1 ];      /* modG at pixel on the right	*/
+            const auto U = (magPtr + step)[ x ]; /* modG at pixel up			*/
+            const auto D = (magPtr - step)[ x ]; /* modG at pixel below			*/
 
             const auto &gradVal = grad.at<cv::Vec2s>({x, y});
             const auto  gx      = abs(gradVal[ 0 ]); /* absolute value of Gx			*/
