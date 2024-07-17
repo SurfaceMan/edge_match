@@ -77,6 +77,88 @@ void compute_edge_points(cv::Mat &edge, const cv::Mat &mag, const cv::Mat &grad,
     }
 }
 
+void compute_edge_points_mask(cv::Mat       &edge,
+                              const cv::Mat &mag,
+                              const cv::Mat &grad,
+                              float          low,
+                              const cv::Mat &mask) {
+    const int X = grad.size().width;
+    const int Y = grad.size().height;
+
+    const auto squareLow = static_cast<unsigned short>(low * low);
+    const auto step      = mag.step / 2;
+    /* explore pixels inside a 2 pixel margin (so modG[x,y +/- 1,1] is defined) */
+    for (int y = 2; y < (Y - 2); y++) {
+        auto *magPtr  = mag.ptr<unsigned short>(y);
+        auto *maskPtr = mask.ptr<char>(y);
+        for (int x = 2; x < (X - 2); x++) {
+            const auto mod     = magPtr[ x ]; /* modG at pixel					*/
+            const auto invalid = maskPtr[ x ];
+            if (mod < squareLow || invalid) {
+                continue;
+            }
+
+            const auto L = magPtr[ x - 1 ];      /* modG at pixel on the left	*/
+            const auto R = magPtr[ x + 1 ];      /* modG at pixel on the right	*/
+            const auto U = (magPtr + step)[ x ]; /* modG at pixel up			*/
+            const auto D = (magPtr - step)[ x ]; /* modG at pixel below			*/
+
+            const auto &gradVal = grad.at<cv::Vec2s>({x, y});
+            const auto  gx      = abs(gradVal[ 0 ]); /* absolute value of Gx			*/
+            const auto  gy      = abs(gradVal[ 1 ]); /* absolute value of Gy			*/
+            /* when local horizontal maxima of the gradient modulus and the gradient direction
+            is more horizontal (|Gx| >= |Gy|),=> a "horizontal" (H) edge found else,
+            if local vertical maxima of the gradient modulus and the gradient direction is more
+            vertical (|Gx| <= |Gy|),=> a "vertical" (V) edge found */
+
+            /* it can happen that two neighbor pixels have equal value and are both	maxima, for
+            example when the edge is exactly between both pixels. in such cases, as an arbitrary
+            convention, the edge is marked on the left one when an horizontal max or below when a
+            vertical max. for	this the conditions are L < mod >= R and D < mod >= U,respectively.
+            the comparisons are done using the function greater() instead of the operators > or >=
+            so numbers differing only due to rounding errors are considered equal */
+
+            int Dx = 0; /* interpolation is along Dx,Dy		*/
+            int Dy = 0; /* which will be selected below		*/
+            if (mod > L && R <= mod && gx >= gy) {
+                Dx = 1; /* H */
+            } else if (mod > D && U <= mod && gx <= gy) {
+                Dy = 1; /* V */
+            }
+            /* Devernay sub-pixel correction
+
+             the edge point position is selected as the one of the maximum of a quadratic
+             interpolation of the magnitude of the gradient along a unidimensional direction. the
+             pixel must be a local maximum. so we	have the values:
+
+              the x position of the maximum of the parabola passing through(-1,a), (0,b), and (1,c)
+             is offset = (a - c) / 2(a - 2b + c),and because b >= a and b >= c, -0.5 <= offset <=
+             0.5
+              */
+            if (Dy > 0) {
+                const float a      = sqrtf(D);
+                const float b      = sqrtf(mod);
+                const float c      = sqrtf(U);
+                const float offset = 0.5f * (a - c) / (a - b - b + c);
+
+                /* store edge point */
+                edge.at<cv::Point2f>({x, y}) = {static_cast<float>(x),
+                                                static_cast<float>(y) + offset};
+
+            } else if (Dx > 0) {
+                const float a      = sqrtf(L);
+                const float b      = sqrtf(mod);
+                const float c      = sqrtf(R);
+                const float offset = 0.5f * (a - c) / (a - b - b + c);
+
+                /* store edge point */
+                edge.at<cv::Point2f>({x, y}) = {static_cast<float>(x) + offset,
+                                                static_cast<float>(y)};
+            }
+        }
+    }
+}
+
 /* return a score for chaining pixels 'from' to 'to', favoring closet point:
     = 0.0 invalid chaining;
     > 0.0 valid forward chaining; the larger the value, the better the chaining;
@@ -378,7 +460,14 @@ void EdgePoint(const cv::Mat                         &img,
                std::vector<std::vector<cv::Vec2f>>   &dirs,
                float                                  sigma,
                float                                  low,
-               float                                  high) {
+               float                                  high,
+               cv::InputArray                         _mask) {
+    bool haveMask = !_mask.empty();
+
+    if (haveMask) {
+        int mtype = _mask.type();
+        CV_Assert((mtype == CV_8UC1 || mtype == CV_8SC1) && _mask.sameSize(img));
+    }
 
     cv::Mat blured;
     cv::Mat mag;
@@ -401,7 +490,11 @@ void EdgePoint(const cv::Mat                         &img,
     cv::Mat prev(img.size(), CV_32SC2, {-1, -1});
 
     start = cv::getTickCount();
-    compute_edge_points(edge, mag, grad, low);
+    if (haveMask) {
+        compute_edge_points_mask(edge, mag, grad, low, _mask.getMat());
+    } else {
+        compute_edge_points(edge, mag, grad, low);
+    }
     chain_edge_points(next, prev, edge, grad);
     thresholds_with_hysteresis(points, dirs, next, prev, mag, edge, grad, high);
     // list_chained_edge_points(points, dirs, next, prev, edge, dx2, dy2, mag);
