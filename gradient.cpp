@@ -1,5 +1,5 @@
-#include <opencv2/core/hal/intrin.hpp>
 #include <opencv2/core.hpp>
+#include <opencv2/core/hal/intrin.hpp>
 
 using namespace cv;
 
@@ -314,12 +314,12 @@ void gradient(cv::InputArray  _src,
         spatialGradientKernel<
             short>(c_grad[ 0 ], c_grad[ 1 ], v00, v01, v02, v10, v12, v20, v21, v22);
         magKernel(c_mag[ 0 ], c_grad[ 0 ], c_grad[ 1 ]);
-        v00 = v01;
-        v10 = v11;
-        v20 = v21;
-        v01 = v02;
-        v11 = v12;
-        v21 = v22;
+        // v00 = v01;
+        // v10 = v11;
+        // v20 = v21;
+        // v01 = v02;
+        // v11 = v12;
+        // v21 = v22;
 
         // Process middle columns
         j   = i >= i_start ? 1 : j_start;

@@ -430,15 +430,17 @@ void thresholds_with_hysteresis(std::vector<std::vector<cv::Point2f>> &points,
                 dir.emplace_back(posGrad[ 0 ] / rMod, posGrad[ 1 ] / rMod);
             }
 
-            path.emplace_back(edge.at<cv::Point2f>(lastPos));
-            const auto &posGrad = grad.at<cv::Vec2s>(lastPos);
-            float       rMod    = sqrtf(mod);
-            dir.emplace_back(posGrad[ 0 ] / rMod, posGrad[ 1 ] / rMod);
+            {
+                path.emplace_back(edge.at<cv::Point2f>(lastPos));
+                const auto &posGrad = grad.at<cv::Vec2s>(lastPos);
+                float       rMod    = sqrtf(mod);
+                dir.emplace_back(posGrad[ 0 ] / rMod, posGrad[ 1 ] / rMod);
+            }
 
             /* follow the chain of edge points forwards */
             while (nextPos.x >= 0) {
-                mod  = mag.at<unsigned short>(nextPos);
-                rMod = sqrtf(mod);
+                mod       = mag.at<unsigned short>(nextPos);
+                auto rMod = sqrtf(mod);
                 path.emplace_back(edge.at<cv::Point2f>(nextPos));
                 const auto &posGrad = grad.at<cv::Vec2s>(nextPos);
                 dir.emplace_back(posGrad[ 0 ] / rMod, posGrad[ 1 ] / rMod);
@@ -474,12 +476,12 @@ void EdgePoint(const cv::Mat                         &img,
     cv::Mat grad;
 
     auto start = cv::getTickCount();
-    cv::GaussianBlur(img, blured, cv::Size(5, 5), 0);
+    cv::GaussianBlur(img, blured, cv::Size(), sigma);
     gradient(blured, grad, mag);
 
     {
         auto end  = cv::getTickCount();
-        auto cost = (end - start) / cv::getTickFrequency();
+        auto cost = static_cast<double>(end - start) / cv::getTickFrequency();
         std::cout << "preprocess cost(s):" << cost << std::endl;
     }
 
@@ -500,7 +502,7 @@ void EdgePoint(const cv::Mat                         &img,
     // list_chained_edge_points(points, dirs, next, prev, edge, dx2, dy2, mag);
     {
         auto end  = cv::getTickCount();
-        auto cost = (end - start) / cv::getTickFrequency();
+        auto cost = static_cast<double>(end - start) / cv::getTickFrequency();
         std::cout << "cost(s):" << cost << std::endl;
     }
 }
