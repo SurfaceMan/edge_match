@@ -62,9 +62,9 @@ static inline void magKernel_vec(U &mag, const T &vx, const T &vy) {
 }
 
 template <typename U, typename T> static inline void magKernel(U &mag, const T &vx, const T &vy) {
-    uint16_t normX = abs(vx);
-    uint16_t normY = abs(vy);
-    mag            = normX * normX + normY + normY;
+    auto normX = abs(vx);
+    auto normY = abs(vy);
+    mag        = static_cast<uint16_t>(normX * normX + normY + normY);
 }
 
 void gradient(cv::InputArray  _src,
