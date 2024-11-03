@@ -1,9 +1,56 @@
 #include "edgesubpix.h"
 
+constexpr int MIN_AREA = 256;
+
 struct Candidate {
-    float     score;
-    float     angle;
-    cv::Point pos;
+    float       score;
+    float       angle;
+    cv::Point2f pos;
+};
+
+struct Template {
+    cv::Size                 size;
+    std::vector<cv::Point2f> edges;
+    std::vector<float>       angles;
+};
+
+struct Layer {
+    double   startAngle = 0;
+    double   stopAngle  = 0;
+    double   angleStep  = 0;
+    Template templates;
+};
+
+enum Metric {
+    USE_POLARITY,
+    IGNORE_LOAL_POLARITY,
+    IGNORE_GLOBAL_POLARITY,
+};
+
+enum Reduce { NONE, LOW, MEDIUM, HIGH, AUTO };
+
+struct EdgeParam {
+    float sigma;
+    uchar low;
+    uchar high;
+    int   minLength;
+};
+
+struct Model {
+    EdgeParam edgeParam;
+    uchar     minMag;
+    Metric    metric;
+    Reduce    reduce;
+
+    cv::Mat            source;
+    std::vector<Layer> layels;
+};
+
+struct Pose {
+    float x;
+    float y;
+    float angle;
+    float score;
 };
 
 // inline double sizeAngleStep(const cv::Size &size) {
@@ -13,6 +60,19 @@ struct Candidate {
 inline double sizeAngleStep(const cv::Size &size) {
     const auto diameter = sqrt(size.width * size.width + size.height * size.height);
     return atan(2. / diameter);
+}
+
+int computeLayers(const int width, const int height, const int minArea) {
+    assert(width > 0 && height > 0 && minArea > 0);
+
+    auto area  = width * height;
+    int  layer = 0;
+    while (area > minArea) {
+        area /= 4;
+        layer++;
+    }
+
+    return layer;
 }
 
 void nextMaxLoc(cv::Mat         &score,
@@ -34,69 +94,114 @@ void nextMaxLoc(cv::Mat         &score,
     cv::minMaxLoc(score, nullptr, &maxScore, nullptr, &maxPos);
 }
 
+Model trainModel(const cv::Mat &src,
+                 int            numLevels,
+                 float          angleStart,
+                 float          angleExtent,
+                 float          angleStep,
+                 Reduce         reduce,
+                 Metric         metric,
+                 EdgeParam      edgeParam,
+                 uchar          minMag) {
+    if (src.empty() || src.channels() != 1) {
+        return {};
+    }
+
+    if (numLevels <= 0) {
+        // level must greater than 0
+        numLevels = computeLayers(src.size().width, src.size().height, MIN_AREA);
+    }
+
+    const auto scale   = 1 << (numLevels - 1);
+    const auto topArea = src.size().area() / (scale * scale);
+    if (MIN_AREA > topArea) {
+        // top area must greater than MIN_AREA
+        return {};
+    }
+
+    auto        srcWidth      = static_cast<std::size_t>(src.cols);
+    auto        srcHeight     = static_cast<std::size_t>(src.rows);
+    std::size_t step          = 1 << (numLevels - 1);
+    auto        alignedWidth  = cv::alignSize(srcWidth, (int)step);
+    auto        alignedHeight = cv::alignSize(srcHeight, (int)step);
+
+    std::size_t paddWidth  = alignedWidth - srcWidth;
+    std::size_t paddHeight = alignedHeight - srcHeight;
+
+    // build pyramids
+    std::vector<cv::Mat> pyramids;
+    cv::Mat              templateImg = src;
+    if (0 != paddHeight || 0 != paddWidth) {
+        cv::copyMakeBorder(src,
+                           templateImg,
+                           0,
+                           (int)paddWidth,
+                           0,
+                           (int)paddHeight,
+                           cv::BORDER_REFLECT);
+    }
+
+    pyramids.emplace_back(std::move(templateImg));
+    for (std::size_t i = 0; i < numLevels - 1; i++) {
+        const auto &last = pyramids[ i ];
+        cv::Mat     tmp;
+        cv::resize(last, tmp, last.size() / 2, 0, 0, cv::INTER_AREA);
+
+        pyramids.emplace_back(std::move(tmp));
+    }
+}
+
+std::vector<Pose> matchModel(const cv::Mat &dst,
+                             const Model   &model,
+                             float          angleStart,
+                             float          angleExtent,
+                             float          angleStep,
+                             int            numMatches,
+                             float          maxOverlap,
+                             bool           subpixel,
+                             int            numLevels,
+                             float          greediness) {}
+
 int main(int argc, const char *argv[]) {
     if (argc < 3) {
         std::cout << "Too few arguments" << std::endl;
         return -1;
     }
-    // auto img = cv::imread(argv[ 1 ], cv::IMREAD_GRAYSCALE);
-    //
-    // cv::Mat  mask(img.size(), CV_8UC1);
-    // cv::Rect roi(0, 0, 1000, 1000);
-    // mask(roi) = 1;
-    //
-    // std::vector<std::vector<cv::Point2f>> edge;
-    // std::vector<std::vector<cv::Vec2f>>   dir;
-    // EdgePoint(img, edge, dir, 1., 10, 29, mask);
 
-    auto src           = cv::imread(argv[ 1 ], cv::IMREAD_GRAYSCALE);
-    int  level         = 4;
-    int  step          = 1 << (level - 1);
-    int  alignedWidth  = cv::alignSize(src.size().width, step);
-    int  alignedHeight = cv::alignSize(src.size().height, step);
+    auto src = cv::imread(argv[ 1 ], cv::IMREAD_GRAYSCALE);
 
-    int paddWidth  = alignedWidth - src.size().width;
-    int paddHeight = alignedHeight - src.size().height;
+    auto        srcWidth      = static_cast<std::size_t>(src.cols);
+    auto        srcHeight     = static_cast<std::size_t>(src.rows);
+    std::size_t level         = 4;
+    std::size_t step          = 1 << (level - 1);
+    auto        alignedWidth  = cv::alignSize(srcWidth, (int)step);
+    auto        alignedHeight = cv::alignSize(srcHeight, (int)step);
+
+    std::size_t paddWidth  = alignedWidth - srcWidth;
+    std::size_t paddHeight = alignedHeight - srcHeight;
 
     // template
-    cv::Mat templateImg;
-    {
-        cv::copyMakeBorder(src, templateImg, 0, paddWidth, 0, paddHeight, cv::BORDER_REFLECT);
-        // cv::imshow("img1", templateImg);
-        // cv::imwrite("img1.png", templateImg);
-        // std::cout << templateImg.size() << std::endl;
-        // std::vector<std::vector<cv::Point2f>> edge1;
-        // std::vector<std::vector<cv::Vec2f>>   dir1;
-        // EdgePoint(templateImg, edge1, dir1, 1., 10, 29);
+    std::vector<cv::Mat> pyramids;
+    cv::Mat              templateImg = src;
+    if (0 != paddHeight || 0 != paddWidth) {
+        cv::copyMakeBorder(src,
+                           templateImg,
+                           0,
+                           (int)paddWidth,
+                           0,
+                           (int)paddHeight,
+                           cv::BORDER_REFLECT);
     }
 
-    cv::Mat templateImg2;
-    {
-        cv::resize(templateImg, templateImg2, templateImg.size() / 2, 0, 0, cv::INTER_AREA);
-        // cv::imshow("img2", templateImg2);
-        // cv::imwrite("img2.png", templateImg2);
-        // std::cout << templateImg2.size() << std::endl;
-        // std::vector<std::vector<cv::Point2f>> edge2;
-        // std::vector<std::vector<cv::Vec2f>>   dir2;
-        // EdgePoint(templateImg2, edge2, dir2, 1., 10, 29);
+    pyramids.emplace_back(std::move(templateImg));
+    for (std::size_t i = 0; i < level - 1; i++) {
+        const auto &last = pyramids[ i ];
+        cv::Mat     tmp;
+        cv::resize(last, tmp, last.size() / 2, 0, 0, cv::INTER_AREA);
+
+        pyramids.emplace_back(std::move(tmp));
     }
 
-    cv::Mat templateImg3;
-    {
-        cv::resize(templateImg2, templateImg3, templateImg2.size() / 2, 0, 0, cv::INTER_AREA);
-        // cv::imshow("img3", templateImg3);
-        // cv::imwrite("img3.png", templateImg3);
-        // std::cout << templateImg3.size() << std::endl;
-        // std::vector<std::vector<cv::Point2f>> edge3;
-        // std::vector<std::vector<cv::Vec2f>>   dir3;
-        // EdgePoint(templateImg3, edge3, dir3, 1., 10, 29);
-    }
-
-    cv::Mat templateImg4;
-    cv::resize(templateImg3, templateImg4, templateImg3.size() / 2, 0, 0, cv::INTER_AREA);
-    // cv::imshow("img4", templateImg4);
-    cv::imwrite("img4.png", templateImg4);
-    std::cout << templateImg4.size() << std::endl;
     std::vector<std::vector<cv::Point2f>> edge4;
     std::vector<std::vector<cv::Vec2f>>   dir4;
     EdgePoint(templateImg4, edge4, dir4, 1., 10, 29);
