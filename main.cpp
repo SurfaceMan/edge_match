@@ -125,9 +125,6 @@ int main(int argc, const char *argv[]) {
         std::vector<float> angles;
         for (const auto &dir : feature) {
             auto angle = atan2f(dir[ 1 ], dir[ 0 ]);
-            if (angle < 0) {
-                angle += CV_PI;
-            }
             angles.push_back(angle);
         }
 
@@ -164,18 +161,9 @@ int main(int argc, const char *argv[]) {
     // cv::imshow("scene4", sceneImg4);
     std::cout << sceneImg4.size() << std::endl;
 
-    // score table
-    constexpr int count = 16;
-    float         vstep = CV_PI / 2. / (count - 1);
-    uint8_t       table[ count ];
-    for (int i = 0; i < count; i++) {
-        table[ i ] = cosf(i * vstep) * 255;
-    }
-    table[ count - 1 ] = 0;
-
     // match top level
     const float            minMag     = 5;
-    const float            minScore   = 0.5;
+    const float            minScore   = 0.8;
     const int              maxCount   = 1;
     const int              CANDIDATA  = 5;
     const float            maxOverlap = 0.5;
@@ -194,12 +182,8 @@ int main(int argc, const char *argv[]) {
             auto x = dx.at<short>(pos[ 0 ], pos[ 1 ]);
             auto y = dy.at<short>(pos[ 0 ], pos[ 1 ]);
 
-            auto angle = atan2(y, x);
-            if (angle < 0) {
-                angle += CV_PI;
-            }
-
-            pixel = angle;
+            auto angle = atan2f(y, x);
+            pixel      = angle;
 
             mag.at<float>(pos[ 0 ], pos[ 1 ]) = sqrt(x * x + y * y) / 4.f;
         });
@@ -214,37 +198,23 @@ int main(int argc, const char *argv[]) {
 
             for (int y = 0; y < angle.rows; y++) {
                 for (int x = 0; x < angle.cols; x++) {
-                    cv::Point offset(x, y);
-                    int       tmpScore = 0;
+                    float tmpScore = 0;
                     for (int i = 0; i < tempPoints.size(); i++) {
                         const auto &point = tempPoints[ i ];
-                        auto        rx    = point.x * alpha - point.y * beta;
-                        auto        ry    = point.x * beta + point.y * alpha;
-
-                        auto ra = tempAngles[ i ] + rot;
+                        auto        rx    = point.x * alpha - point.y * beta + x;
+                        auto        ry    = point.x * beta + point.y * alpha + y;
 
                         cv::Point pos(cvRound(rx), cvRound(ry));
-                        pos += offset;
-
                         if (pos.x < 0 || pos.y < 0 || pos.x >= angle.cols || pos.y >= angle.rows ||
                             mag.at<float>(pos) < minMag) {
                             continue;
                         }
 
-                        auto sa  = angle.at<float>(pos);
-                        sa      += ra;
-                        if (sa < 0) {
-                            sa += CV_PI;
-                        }
-                        if (sa > CV_2PI) {
-                            sa -= CV_2PI;
-                        }
-
-                        auto index  = cvRound(sa / vstep);
-                        tmpScore   += table[ index ];
+                        auto ra   = tempAngles[ i ] + rot - angle.at<float>(pos);
+                        tmpScore += cos(ra);
                     }
 
-                    score.at<float>(offset) = tmpScore / 255.f / tempPoints.size();
+                    score.at<float>(y, x) = tmpScore / tempPoints.size();
                 }
             }
 
@@ -267,6 +237,9 @@ int main(int argc, const char *argv[]) {
             }
         }
     }
+
+    std::vector<Candidate> candidates2;
+    for (const auto &candidate : candidates) {}
 
     cv::waitKey();
 }
