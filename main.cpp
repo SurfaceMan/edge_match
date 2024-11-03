@@ -1,5 +1,39 @@
 #include "edgesubpix.h"
 
+struct Candidate {
+    float     score;
+    float     angle;
+    cv::Point pos;
+};
+
+// inline double sizeAngleStep(const cv::Size &size) {
+//     return atan(2. / std::max(size.width, size.height)) * 180. / CV_PI;
+// }
+
+inline double sizeAngleStep(const cv::Size &size) {
+    const auto diameter = sqrt(size.width * size.width + size.height * size.height);
+    return atan(2. / diameter);
+}
+
+void nextMaxLoc(cv::Mat         &score,
+                const cv::Point &pos,
+                const cv::Size   templateSize,
+                const double     maxOverlap,
+                double          &maxScore,
+                cv::Point       &maxPos) {
+    const auto      alone = 1. - maxOverlap;
+    const cv::Point offset(static_cast<int>(templateSize.width * alone),
+                           static_cast<int>(templateSize.height * alone));
+    const cv::Size  size(static_cast<int>(2 * templateSize.width * alone),
+                        static_cast<int>(2 * templateSize.height * alone));
+    const cv::Rect  rectIgnore(pos - offset, size);
+
+    // clear neighbor
+    cv::rectangle(score, rectIgnore, cv::Scalar(-1), cv::FILLED);
+
+    cv::minMaxLoc(score, nullptr, &maxScore, nullptr, &maxPos);
+}
+
 int main(int argc, const char *argv[]) {
     if (argc < 3) {
         std::cout << "Too few arguments" << std::endl;
@@ -68,6 +102,7 @@ int main(int argc, const char *argv[]) {
     EdgePoint(templateImg4, edge4, dir4, 1., 10, 29);
 
     cv::Point2f center((templateImg4.cols - 1) / 2.f, (templateImg4.rows - 1) / 2.f);
+    auto        angleStep = sizeAngleStep(templateImg4.size());
 
     std::vector<std::vector<cv::Point2f>> points4;
     std::vector<std::vector<float>>       angles4;
@@ -129,26 +164,6 @@ int main(int argc, const char *argv[]) {
     // cv::imshow("scene4", sceneImg4);
     std::cout << sceneImg4.size() << std::endl;
 
-    cv::Mat blured;
-    cv::GaussianBlur(sceneImg4, blured, cv::Size(5, 5), 0);
-
-    cv::Mat dx;
-    cv::Mat dy;
-    cv::spatialGradient(blured, dx, dy);
-
-    cv::Mat angle(dx.size(), CV_32FC1);
-    angle.forEach<float>([ & ](float &pixel, const int *pos) {
-        auto x = dx.at<short>(pos[ 0 ], pos[ 1 ]);
-        auto y = dy.at<short>(pos[ 0 ], pos[ 1 ]);
-
-        auto angle = atan2(y, x);
-        if (angle < 0) {
-            angle += CV_PI;
-        }
-
-        pixel = angle;
-    });
-
     // score table
     constexpr int count = 16;
     float         vstep = CV_PI / 2. / (count - 1);
@@ -157,6 +172,101 @@ int main(int argc, const char *argv[]) {
         table[ i ] = cosf(i * vstep) * 255;
     }
     table[ count - 1 ] = 0;
+
+    // match top level
+    const float            minMag     = 5;
+    const float            minScore   = 0.5;
+    const int              maxCount   = 1;
+    const int              CANDIDATA  = 5;
+    const float            maxOverlap = 0.5;
+    std::vector<Candidate> candidates;
+    {
+        cv::Mat blured;
+        cv::GaussianBlur(sceneImg4, blured, cv::Size(5, 5), 0);
+
+        cv::Mat dx;
+        cv::Mat dy;
+        cv::spatialGradient(blured, dx, dy);
+
+        cv::Mat angle(dx.size(), CV_32FC1);
+        cv::Mat mag(dx.size(), CV_32FC1);
+        angle.forEach<float>([ & ](float &pixel, const int *pos) {
+            auto x = dx.at<short>(pos[ 0 ], pos[ 1 ]);
+            auto y = dy.at<short>(pos[ 0 ], pos[ 1 ]);
+
+            auto angle = atan2(y, x);
+            if (angle < 0) {
+                angle += CV_PI;
+            }
+
+            pixel = angle;
+
+            mag.at<float>(pos[ 0 ], pos[ 1 ]) = sqrt(x * x + y * y) / 4.f;
+        });
+
+        cv::Mat score(dx.size(), CV_32FC1);
+        for (float rot = 0; rot < CV_2PI; rot += angleStep) {
+            auto alpha = std::cos(rot);
+            auto beta  = std::sin(rot);
+
+            auto &tempPoints = points4[ 0 ];
+            auto &tempAngles = angles4[ 0 ];
+
+            for (int y = 0; y < angle.rows; y++) {
+                for (int x = 0; x < angle.cols; x++) {
+                    cv::Point offset(x, y);
+                    int       tmpScore = 0;
+                    for (int i = 0; i < tempPoints.size(); i++) {
+                        const auto &point = tempPoints[ i ];
+                        auto        rx    = point.x * alpha - point.y * beta;
+                        auto        ry    = point.x * beta + point.y * alpha;
+
+                        auto ra = tempAngles[ i ] + rot;
+
+                        cv::Point pos(cvRound(rx), cvRound(ry));
+                        pos += offset;
+
+                        if (pos.x < 0 || pos.y < 0 || pos.x >= angle.cols || pos.y >= angle.rows ||
+                            mag.at<float>(pos) < minMag) {
+                            continue;
+                        }
+
+                        auto sa  = angle.at<float>(pos);
+                        sa      += ra;
+                        if (sa < 0) {
+                            sa += CV_PI;
+                        }
+                        if (sa > CV_2PI) {
+                            sa -= CV_2PI;
+                        }
+
+                        auto index  = cvRound(sa / vstep);
+                        tmpScore   += table[ index ];
+                    }
+
+                    score.at<float>(offset) = tmpScore / 255.f / tempPoints.size();
+                }
+            }
+
+            double    maxScore;
+            cv::Point maxPos;
+            cv::minMaxLoc(score, nullptr, &maxScore, nullptr, &maxPos);
+            if (maxScore < minScore) {
+                continue;
+            }
+
+            candidates.emplace_back(Candidate{(float)maxScore, rot, maxPos});
+
+            for (int i = 0; i < maxCount + CANDIDATA; i++) {
+                nextMaxLoc(score, maxPos, templateImg4.size(), maxOverlap, maxScore, maxPos);
+                if (maxScore < minScore) {
+                    break;
+                }
+
+                candidates.emplace_back(Candidate{(float)maxScore, rot, maxPos});
+            }
+        }
+    }
 
     cv::waitKey();
 }
