@@ -51,8 +51,6 @@ struct Model {
     Metric    metric;
     Reduce    reduce;
     float     radius;
-    float     startAngle;
-    float     stopAngle;
 
     cv::Mat            source;
     std::vector<Layer> layels;
@@ -110,9 +108,10 @@ Template buildTemplate(const cv::Mat     &src,
     std::vector<cv::Point2f> points;
     std::vector<float>       angles;
     for (std::size_t i = 0; i < edges.size(); i++) {
-        const auto &edge = edges[ i ];
-        const auto &dir  = dirs[ i ];
-        if (edgeParam.minLength > edge.size()) {
+        const auto &edge   = edges[ i ];
+        const auto &dir    = dirs[ i ];
+        const auto  length = static_cast<int>(edge.size());
+        if (edgeParam.minLength > length) {
             continue;
         }
 
@@ -166,9 +165,6 @@ std::vector<cv::Mat> buildPyramid(const cv::Mat &src, int numLevels) {
     return pyramids;
 }
 
-#pragma omp declare reduction(combine : std::vector<Candidate> : omp_out                           \
-                                  .insert(omp_out.end(), omp_in.begin(), omp_in.end()))
-
 std::vector<Candidate> matchTopLayel(const cv::Mat &dstTop,
                                      float          startAngle,
                                      float          spanAngle,
@@ -195,7 +191,6 @@ std::vector<Candidate> matchTopLayel(const cv::Mat &dstTop,
     cv::Mat angle;
     cv::cartToPolar(dx, dy, mag, angle);
 
-#pragma omp parallel for reduction(combine : candidates)
     for (int i = 0; i < count; i++) {
         const auto rotation = startAngle + angleStep * i;
 
@@ -233,7 +228,6 @@ std::vector<Candidate> matchDownLayel(const std::vector<cv::Mat>   &pyramids,
     std::vector<Candidate> levelMatched;
     auto                   count = static_cast<int>(candidates.size());
 
-#pragma omp parallel for reduction(combine : levelMatched)
     for (int index = 0; index < count; index++) {
         auto pose    = candidates[ index ];
         bool matched = true;
@@ -254,9 +248,6 @@ std::vector<Candidate> matchDownLayel(const std::vector<cv::Mat>   &pyramids,
 
 Model trainModel(const cv::Mat &src,
                  int            numLevels,
-                 float          angleStart,
-                 float          angleExtent,
-                 float          angleStep,
                  Reduce         reduce,
                  Metric         metric,
                  EdgeParam      edgeParam,
@@ -287,13 +278,9 @@ Model trainModel(const cv::Mat &src,
     std::for_each(baseTemplate.edges.begin(), baseTemplate.edges.end(), [ & ](cv::Point2f &point) {
         point -= center;
     });
+    auto angleStep = atan(1 / radius);
 
-    if (angleStep < 0) {
-        angleStep = atan(1 / radius);
-    }
-
-    auto  stopAngle = angleStart + angleExtent;
-    Model model{edgeParam, minMag, metric, reduce, radius, angleStart, stopAngle, src};
+    Model model{edgeParam, minMag, metric, reduce, radius, src, {}};
     model.layels.emplace_back(angleStep, baseTemplate);
     for (std::size_t i = 1; i < pyramids.size(); i++) {
         center    /= 2.f;
@@ -323,14 +310,6 @@ std::vector<Pose> matchModel(const cv::Mat &dst,
     const auto templateLevel = static_cast<int>(model.layels.size());
     if (numLevels < 0 || numLevels > templateLevel) {
         numLevels = templateLevel;
-    }
-
-    if (angleStart > model.startAngle) {
-        angleStart = model.startAngle;
-    }
-
-    if (angleStart + angleExtent > model.stopAngle) {
-        angleExtent = model.stopAngle - angleStart;
     }
 
     auto pyramids = buildPyramid(dst, numLevels);
