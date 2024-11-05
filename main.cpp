@@ -377,7 +377,7 @@ int main(int argc, const char *argv[]) {
     auto src = cv::imread(argv[ 1 ], cv::IMREAD_GRAYSCALE);
     auto dst = cv::imread(argv[ 2 ], cv::IMREAD_GRAYSCALE);
 
-    auto model = trainModel(src, -1, NONE, USE_POLARITY, {0.5, 20, 40, 5}, 10);
+    auto model = trainModel(src, -1, NONE, USE_POLARITY, {1, 10, 29, 5}, 10);
 
     auto result = matchModel(dst, model, 0, CV_2PI, -1, 0.6, 2, 0.5, false, -1, 0.9);
 
