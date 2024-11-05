@@ -1,7 +1,8 @@
 #include "edgesubpix.h"
 
-constexpr int MIN_AREA  = 256;
-constexpr int CANDIDATE = 5;
+constexpr int   MIN_AREA  = 256;
+constexpr int   CANDIDATE = 5;
+constexpr float INVALID   = -1.;
 
 struct Pose {
     float x;
@@ -14,6 +15,10 @@ struct Candidate {
     double      score;
     float       angle;
     cv::Point2f pos;
+
+    Candidate()
+        : score(0)
+        , angle(0) {}
 
     Candidate(double _score, float _angle, cv::Point2f _pos)
         : score(_score)
@@ -157,6 +162,42 @@ cv::Mat matchTemplate(const cv::Mat &angle, const Template &temp, float rotation
     return score;
 }
 
+cv::Mat matchTemplate(const cv::Mat  &angle,
+                      const Template &temp,
+                      float           rotation,
+                      const cv::Rect &rect) {
+    cv::Mat score(rect.size(), CV_32FC1);
+
+    auto alpha = std::cos(rotation);
+    auto beta  = std::sin(rotation);
+    auto size  = temp.edges.size();
+
+    for (int py = 0; py < rect.height; py++) {
+        for (int px = 0; px < rect.width; px++) {
+            float tmpScore = 0;
+            int   x        = rect.x + px;
+            int   y        = rect.y + py;
+            for (std::size_t i = 0; i < size; i++) {
+                const auto &point = temp.edges[ i ];
+                auto        rx    = point.x * alpha - point.y * beta + x;
+                auto        ry    = point.x * beta + point.y * alpha + y;
+
+                cv::Point pos(cvRound(rx), cvRound(ry));
+                if (pos.x < 0 || pos.y < 0 || pos.x >= angle.cols || pos.y >= angle.rows) {
+                    continue;
+                }
+
+                auto ra   = temp.angles[ i ] + rotation - angle.at<float>(pos);
+                tmpScore += cos(ra);
+            }
+
+            score.at<float>(py, px) = tmpScore / size;
+        }
+    }
+
+    return score;
+}
+
 std::vector<cv::Mat> buildPyramid(const cv::Mat &src, int numLevels) {
     auto        srcWidth      = static_cast<std::size_t>(src.cols);
     auto        srcHeight     = static_cast<std::size_t>(src.rows);
@@ -192,6 +233,26 @@ std::vector<cv::Mat> buildPyramid(const cv::Mat &src, int numLevels) {
     return pyramids;
 }
 
+void buildEdge(const cv::Mat &src, cv::Mat &angle, cv::Mat &mag) {
+    cv::Mat blur;
+    cv::GaussianBlur(src, blur, cv::Size{5, 5}, 0);
+
+    cv::Mat dx;
+    cv::Mat dy;
+    cv::spatialGradient(blur, dx, dy);
+
+    angle = cv::Mat(dx.size(), CV_32FC1);
+    mag   = cv::Mat(dx.size(), CV_32FC1);
+    angle.forEach<float>([ & ](float &pixel, const int *pos) {
+        auto x = dx.at<short>(pos[ 0 ], pos[ 1 ]);
+        auto y = dy.at<short>(pos[ 0 ], pos[ 1 ]);
+
+        pixel = atan2f(y, x);
+
+        mag.at<float>(pos[ 0 ], pos[ 1 ]) = sqrt(x * x + y * y) / 4.f;
+    });
+}
+
 std::vector<Candidate> matchTopLayel(const cv::Mat &dstTop,
                                      float          startAngle,
                                      float          spanAngle,
@@ -207,23 +268,9 @@ std::vector<Candidate> matchTopLayel(const cv::Mat &dstTop,
     const auto  angleStep         = templateTop.angleStep;
     const auto  count             = static_cast<int>(spanAngle / angleStep) + 1;
 
-    cv::Mat blur;
-    cv::GaussianBlur(dstTop, blur, cv::Size{5, 5}, 0);
-
-    cv::Mat dx;
-    cv::Mat dy;
-    cv::spatialGradient(blur, dx, dy);
-
-    cv::Mat angle(dx.size(), CV_32FC1);
-    cv::Mat mag(dx.size(), CV_32FC1);
-    angle.forEach<float>([ & ](float &pixel, const int *pos) {
-        auto x = dx.at<short>(pos[ 0 ], pos[ 1 ]);
-        auto y = dy.at<short>(pos[ 0 ], pos[ 1 ]);
-
-        pixel = atan2f(y, x);
-
-        mag.at<float>(pos[ 0 ], pos[ 1 ]) = sqrt(x * x + y * y) / 4.f;
-    });
+    cv::Mat angle;
+    cv::Mat mag;
+    buildEdge(dstTop, angle, mag);
 
     for (int i = 0; i < count; i++) {
         const auto rotation = startAngle + angleStep * i;
@@ -260,26 +307,90 @@ std::vector<Candidate> matchDownLayel(const std::vector<cv::Mat>   &pyramids,
                                       const Model                  &model,
                                       int                           numLevels) {
     std::vector<Candidate> levelMatched;
-    // auto                   count = static_cast<int>(candidates.size());
-    //
-    // for (int index = 0; index < count; index++) {
-    //     auto pose    = candidates[ index ];
-    //     bool matched = true;
-    //
-    //     for (int currentLevel = numLevels - 1; currentLevel >= 0; currentLevel--) {
-    //         const auto &currentLayel   = model.templates[ currentLevel ];
-    //         const auto  scoreThreshold = minScore * pow(0.9, currentLevel);
-    //         const auto  angleStep      = currentLayel.angleStep;
-    //
-    //         for (int i = -1; i <= 1; i++) {
-    //             auto rotation = pose.angle + i * angleStep;
-    //
-    //             auto result = matchTemplate(angle, currentLayel, rotation);
-    //         }
-    //     }
-    // }
+    std::vector<cv::Mat>   angles(numLevels - 1);
+    std::vector<cv::Mat>   mags(numLevels - 1);
+
+    for (int i = 0; i < numLevels - 1; i++) {
+        cv::Mat angle;
+        cv::Mat mag;
+        buildEdge(pyramids[ i ], angle, mag);
+
+        angles[ i ] = std::move(angle);
+        mags[ i ]   = std::move(mag);
+    }
+
+    auto count = static_cast<int>(candidates.size());
+
+    for (int index = 0; index < count; index++) {
+        auto pose    = candidates[ index ];
+        bool matched = true;
+
+        for (int currentLevel = numLevels - 2; currentLevel >= 0; currentLevel--) {
+            const auto    &currentTemp    = model.templates[ currentLevel ];
+            const auto     scoreThreshold = minScore * pow(0.9, currentLevel);
+            const auto     angleStep      = currentTemp.angleStep;
+            const auto     center         = pose.pos * 2.f;
+            const cv::Rect rect(center.x - 3, center.y - 3, 7, 7);
+
+            Candidate newCandidate;
+            for (int i = -1; i <= 1; i++) {
+                auto rotation = pose.angle + i * angleStep;
+                auto result   = matchTemplate(angles[ currentLevel ], currentTemp, rotation, rect);
+
+                double    maxScore;
+                cv::Point maxPos;
+                cv::minMaxLoc(result, nullptr, &maxScore, nullptr, &maxPos);
+
+                if (newCandidate.score >= maxScore || maxScore < scoreThreshold) {
+                    continue;
+                }
+
+                newCandidate = {maxScore, rotation, maxPos + rect.tl()};
+            }
+
+            if (newCandidate.score < scoreThreshold) {
+                matched = false;
+                break;
+            }
+
+            pose = newCandidate;
+        }
+
+        if (!matched) {
+            continue;
+        }
+
+        levelMatched.push_back(pose);
+    }
+    std::sort(levelMatched.begin(), levelMatched.end());
 
     return levelMatched;
+}
+
+void filterOverlap(std::vector<Candidate> &candidates, float maxOverlap, float radius) {
+    float      minDist = radius * radius * maxOverlap * maxOverlap;
+    const auto size    = candidates.size();
+    for (std::size_t i = 0; i < size; i++) {
+        auto &candidate = candidates[ i ];
+        if (candidate.score < 0) {
+            continue;
+        }
+        for (std::size_t j = i + 1; j < size; j++) {
+            auto &refCandidate = candidates[ j ];
+
+            if (refCandidate.score < 0) {
+                continue;
+            }
+
+            auto delta = candidate.pos - refCandidate.pos;
+            auto dist  = delta.dot(delta);
+            if (dist > minDist) {
+                continue;
+            }
+
+            (candidate.score > refCandidate.score ? refCandidate.score : candidate.score) = INVALID;
+        }
+    }
 }
 
 Model trainModel(const cv::Mat &src,
@@ -367,6 +478,29 @@ std::vector<Pose> matchModel(const cv::Mat &dst,
     // match candidate each layel
     std::vector<Candidate> matched =
         matchDownLayel(pyramids, candidates, minScore, subpixel, model, numLevels);
+
+    filterOverlap(matched, maxOverlap, model.templates.front().radius);
+
+    std::vector<Pose> result;
+    {
+        const auto count = matched.size();
+        for (std::size_t i = 0; i < count; i++) {
+            const auto &candidate = matched[ i ];
+
+            if (candidate.score < 0) {
+                continue;
+            }
+
+            result.emplace_back(
+                Pose{candidate.pos.x, candidate.pos.y, candidate.angle, (float)candidate.score});
+        }
+
+        std::sort(result.begin(), result.end(), [](const Pose &a, const Pose &b) {
+            return a.score > b.score;
+        });
+    }
+
+    return result;
 }
 
 int main(int argc, const char *argv[]) {
@@ -379,7 +513,25 @@ int main(int argc, const char *argv[]) {
 
     auto model = trainModel(src, -1, NONE, USE_POLARITY, {1, 10, 29, 5}, 10);
 
-    auto result = matchModel(dst, model, 0, CV_2PI, -1, 0.6, 2, 0.5, false, -1, 0.9);
+    auto result = matchModel(dst, model, 0, CV_2PI, -1, 0.9, 2, 0.5, false, -1, 0.9);
 
-    return {};
+    cv::Mat color;
+    cv::cvtColor(dst, color, cv::COLOR_GRAY2RGB);
+    for (int i = 0; i < result.size(); i++) {
+        auto           &pose = result[ i ];
+        cv::RotatedRect rect(cv::Point2f(pose.x, pose.y), src.size(), -pose.angle);
+
+        cv::Point2f pts[ 4 ];
+        rect.points(pts);
+
+        cv::line(color, pts[ 0 ], pts[ 1 ], cv::Scalar(255, 0, 0), 1, cv::LINE_AA);
+        cv::line(color, pts[ 1 ], pts[ 2 ], cv::Scalar(255, 0, 0), 1, cv::LINE_AA);
+        cv::line(color, pts[ 2 ], pts[ 3 ], cv::Scalar(255, 0, 0), 1, cv::LINE_AA);
+        cv::line(color, pts[ 3 ], pts[ 0 ], cv::Scalar(255, 0, 0), 1, cv::LINE_AA);
+
+        std::cout << pose.x << "," << pose.y << "," << pose.angle << "," << pose.score << std::endl;
+    }
+
+    cv::imshow("img", color);
+    cv::waitKey();
 }
