@@ -143,10 +143,12 @@ cv::Mat matchTemplate(const cv::Mat &angle, const Template &temp, float rotation
             float tmpScore = 0;
             for (std::size_t i = 0; i < size; i++) {
                 const auto &point = temp.edges[ i ];
-                auto        rx    = point.x * alpha - point.y * beta + x;
-                auto        ry    = point.x * beta + point.y * alpha + y;
+                auto        rx    = point.x * alpha - point.y * beta;
+                auto        ry    = point.x * beta + point.y * alpha;
 
                 cv::Point pos(cvRound(rx), cvRound(ry));
+                pos.x += x;
+                pos.y += y;
                 if (pos.x < 0 || pos.y < 0 || pos.x >= angle.cols || pos.y >= angle.rows) {
                     continue;
                 }
@@ -155,7 +157,7 @@ cv::Mat matchTemplate(const cv::Mat &angle, const Template &temp, float rotation
                 tmpScore += cos(ra);
             }
 
-            score.at<float>(y, x) = tmpScore / size;
+            score.at<float>(y, x) = tmpScore / static_cast<float>(size);
         }
     }
 
@@ -179,10 +181,12 @@ cv::Mat matchTemplate(const cv::Mat  &angle,
             int   y        = rect.y + py;
             for (std::size_t i = 0; i < size; i++) {
                 const auto &point = temp.edges[ i ];
-                auto        rx    = point.x * alpha - point.y * beta + x;
-                auto        ry    = point.x * beta + point.y * alpha + y;
+                auto        rx    = point.x * alpha - point.y * beta;
+                auto        ry    = point.x * beta + point.y * alpha;
 
                 cv::Point pos(cvRound(rx), cvRound(ry));
+                pos.x += x;
+                pos.y += y;
                 if (pos.x < 0 || pos.y < 0 || pos.x >= angle.cols || pos.y >= angle.rows) {
                     continue;
                 }
@@ -191,7 +195,7 @@ cv::Mat matchTemplate(const cv::Mat  &angle,
                 tmpScore += cos(ra);
             }
 
-            score.at<float>(py, px) = tmpScore / size;
+            score.at<float>(py, px) = tmpScore / static_cast<float>(size);
         }
     }
 
@@ -249,7 +253,7 @@ void buildEdge(const cv::Mat &src, cv::Mat &angle, cv::Mat &mag) {
 
         pixel = atan2f(y, x);
 
-        mag.at<float>(pos[ 0 ], pos[ 1 ]) = sqrt(x * x + y * y) / 4.f;
+        mag.at<float>(pos[ 0 ], pos[ 1 ]) = sqrtf(x * x + y * y) / 4.f;
     });
 }
 
@@ -503,6 +507,19 @@ std::vector<Pose> matchModel(const cv::Mat &dst,
     return result;
 }
 
+void drawEdge(cv::Mat &img, const Pose &pose, const Template &temp) {
+    auto alpha = std::cos(pose.angle);
+    auto beta  = std::sin(pose.angle);
+
+    for (const auto &point : temp.edges) {
+        auto      rx = point.x * alpha - point.y * beta + pose.x;
+        auto      ry = point.x * beta + point.y * alpha + pose.y;
+        cv::Point pos(cvRound(rx), cvRound(ry));
+
+        cv::circle(img, pos, 1, cv::Scalar(0, 0, 255));
+    }
+}
+
 int main(int argc, const char *argv[]) {
     if (argc < 3) {
         throw std::runtime_error("too few args");
@@ -511,23 +528,23 @@ int main(int argc, const char *argv[]) {
     auto src = cv::imread(argv[ 1 ], cv::IMREAD_GRAYSCALE);
     auto dst = cv::imread(argv[ 2 ], cv::IMREAD_GRAYSCALE);
 
-    auto model = trainModel(src, -1, NONE, USE_POLARITY, {1, 10, 29, 5}, 10);
-
+    auto t1     = cv::getTickCount();
+    auto model  = trainModel(src, -1, NONE, USE_POLARITY, {1, 10, 29, 5}, 10);
+    auto t2     = cv::getTickCount();
     auto result = matchModel(dst, model, 0, CV_2PI, -1, 0.9, 2, 0.5, false, -1, 0.9);
+    auto t3     = cv::getTickCount();
+
+    auto trainCost = double(t2 - t1) / cv::getTickFrequency();
+    std::cout << "train(s):" << trainCost << std::endl;
+
+    auto matchCost = double(t3 - t2) / cv::getTickFrequency();
+    std::cout << "match(s):" << matchCost << std::endl;
 
     cv::Mat color;
     cv::cvtColor(dst, color, cv::COLOR_GRAY2RGB);
     for (int i = 0; i < result.size(); i++) {
-        auto           &pose = result[ i ];
-        cv::RotatedRect rect(cv::Point2f(pose.x, pose.y), src.size(), -pose.angle);
-
-        cv::Point2f pts[ 4 ];
-        rect.points(pts);
-
-        cv::line(color, pts[ 0 ], pts[ 1 ], cv::Scalar(255, 0, 0), 1, cv::LINE_AA);
-        cv::line(color, pts[ 1 ], pts[ 2 ], cv::Scalar(255, 0, 0), 1, cv::LINE_AA);
-        cv::line(color, pts[ 2 ], pts[ 3 ], cv::Scalar(255, 0, 0), 1, cv::LINE_AA);
-        cv::line(color, pts[ 3 ], pts[ 0 ], cv::Scalar(255, 0, 0), 1, cv::LINE_AA);
+        auto &pose = result[ i ];
+        drawEdge(color, pose, model.templates.front());
 
         std::cout << pose.x << "," << pose.y << "," << pose.angle << "," << pose.score << std::endl;
     }
