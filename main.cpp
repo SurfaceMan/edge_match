@@ -1,8 +1,17 @@
 #include "edgesubpix.h"
 
-constexpr int   MIN_AREA  = 256;
-constexpr int   CANDIDATE = 5;
-constexpr float INVALID   = -1.;
+constexpr int    MIN_AREA  = 256;
+constexpr int    CANDIDATE = 5;
+constexpr float  INVALID   = -1.;
+constexpr double COS[]     = {
+    1,         0.994522,  0.978148,  0.951057,  0.913545,  0.866025,  0.809017,  0.743145,
+    0.669131,  0.587785,  0.5,       0.406737,  0.309017,  0.207912,  0.104528,  0,
+    -0.104529, -0.207912, -0.309017, -0.406737, -0.5,      -0.587785, -0.669131, -0.743145,
+    -0.809017, -0.866025, -0.913545, -0.951056, -0.978148, -0.994522, -1,        -0.994522,
+    -0.978148, -0.951056, -0.913545, -0.866025, -0.809017, -0.743145, -0.669131, -0.587785,
+    -0.5,      -0.406737, -0.309017, -0.207912, -0.104528, 0,         0.104528,  0.207912,
+    0.309017,  0.406737,  0.5,       0.587785,  0.669131,  0.743145,  0.809017,  0.866025,
+    0.913545,  0.951056,  0.978148,  0.9999,    1.};
 
 struct Pose {
     float x;
@@ -153,8 +162,14 @@ cv::Mat matchTemplate(const cv::Mat &angle, const Template &temp, float rotation
                     continue;
                 }
 
-                auto ra   = temp.angles[ i ] + rotation - angle.at<float>(pos);
-                tmpScore += cos(ra);
+                auto ra = temp.angles[ i ] + rotation - angle.at<float>(pos);
+                ra      = fabs(ra);
+                if (ra > CV_2PI) {
+                    ra -= CV_2PI;
+                }
+                int index  = ceil(ra / 0.10472);
+                tmpScore  += COS[ index ];
+                // tmpScore += cos(ra);
             }
 
             score.at<float>(y, x) = tmpScore / static_cast<float>(size);
@@ -191,8 +206,14 @@ cv::Mat matchTemplate(const cv::Mat  &angle,
                     continue;
                 }
 
-                auto ra   = temp.angles[ i ] + rotation - angle.at<float>(pos);
-                tmpScore += cos(ra);
+                auto ra = temp.angles[ i ] + rotation - angle.at<float>(pos);
+                ra      = fabs(ra);
+                if (ra > CV_2PI) {
+                    ra -= CV_2PI;
+                }
+                int index  = ceil(ra / 0.10472);
+                tmpScore  += COS[ index ];
+                // tmpScore += cos(ra);
             }
 
             score.at<float>(py, px) = tmpScore / static_cast<float>(size);
@@ -314,7 +335,7 @@ std::vector<Candidate> matchDownLayel(const std::vector<cv::Mat>   &pyramids,
     std::vector<cv::Mat>   angles(numLevels - 1);
     std::vector<cv::Mat>   mags(numLevels - 1);
 
-    for (int i = 0; i < numLevels - 1; i++) {
+    for (std::size_t i = 0; i < numLevels - 1; i++) {
         cv::Mat angle;
         cv::Mat mag;
         buildEdge(pyramids[ i ], angle, mag);
@@ -325,7 +346,7 @@ std::vector<Candidate> matchDownLayel(const std::vector<cv::Mat>   &pyramids,
 
     auto count = static_cast<int>(candidates.size());
 
-    for (int index = 0; index < count; index++) {
+    for (std::size_t index = 0; index < count; index++) {
         auto pose    = candidates[ index ];
         bool matched = true;
 
@@ -531,7 +552,7 @@ int main(int argc, const char *argv[]) {
     auto t1     = cv::getTickCount();
     auto model  = trainModel(src, -1, NONE, USE_POLARITY, {1, 10, 29, 5}, 10);
     auto t2     = cv::getTickCount();
-    auto result = matchModel(dst, model, 0, CV_2PI, -1, 0.9, 2, 0.5, false, -1, 0.9);
+    auto result = matchModel(dst, model, 0, CV_2PI, -1, 0.9f, 2, 0.5f, false, -1, 0.9f);
     auto t3     = cv::getTickCount();
 
     auto trainCost = double(t2 - t1) / cv::getTickFrequency();
@@ -540,15 +561,13 @@ int main(int argc, const char *argv[]) {
     auto matchCost = double(t3 - t2) / cv::getTickFrequency();
     std::cout << "match(s):" << matchCost << std::endl;
 
-    cv::Mat color;
-    cv::cvtColor(dst, color, cv::COLOR_GRAY2RGB);
-    for (int i = 0; i < result.size(); i++) {
-        auto &pose = result[ i ];
-        drawEdge(color, pose, model.templates.front());
-
+    // cv::Mat color;
+    // cv::cvtColor(dst, color, cv::COLOR_GRAY2RGB);
+    for (const auto &pose : result) {
+        // drawEdge(color, pose, model.templates.front());
         std::cout << pose.x << "," << pose.y << "," << pose.angle << "," << pose.score << std::endl;
     }
-
-    cv::imshow("img", color);
-    cv::waitKey();
+    //
+    // cv::imshow("img", color);
+    // cv::waitKey();
 }

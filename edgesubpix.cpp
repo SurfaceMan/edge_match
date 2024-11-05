@@ -475,15 +475,15 @@ void EdgePoint(const cv::Mat                         &img,
     cv::Mat mag;
     cv::Mat grad;
 
-    auto start = cv::getTickCount();
+    // auto start = cv::getTickCount();
     cv::GaussianBlur(img, blured, cv::Size(), sigma);
     gradient(blured, grad, mag);
 
-    {
-        auto end  = cv::getTickCount();
-        auto cost = static_cast<double>(end - start) / cv::getTickFrequency();
-        std::cout << "preprocess cost(s):" << cost << std::endl;
-    }
+    //{
+    //    auto end  = cv::getTickCount();
+    //    auto cost = static_cast<double>(end - start) / cv::getTickFrequency();
+    //    std::cout << "preprocess cost(s):" << cost << std::endl;
+    //}
 
     // inter
     cv::Mat edge(img.size(), CV_32FC2, {-1.f, -1.f});
@@ -491,7 +491,7 @@ void EdgePoint(const cv::Mat                         &img,
     cv::Mat next(img.size(), CV_32SC2, {-1, -1});
     cv::Mat prev(img.size(), CV_32SC2, {-1, -1});
 
-    start = cv::getTickCount();
+    // start = cv::getTickCount();
     if (haveMask) {
         compute_edge_points_mask(edge, mag, grad, low, _mask.getMat());
     } else {
@@ -500,9 +500,9 @@ void EdgePoint(const cv::Mat                         &img,
     chain_edge_points(next, prev, edge, grad);
     thresholds_with_hysteresis(points, dirs, next, prev, mag, edge, grad, high);
     // list_chained_edge_points(points, dirs, next, prev, edge, dx2, dy2, mag);
-    {
-        auto end  = cv::getTickCount();
-        auto cost = static_cast<double>(end - start) / cv::getTickFrequency();
-        std::cout << "cost(s):" << cost << std::endl;
-    }
+    //{
+    //    auto end  = cv::getTickCount();
+    //    auto cost = static_cast<double>(end - start) / cv::getTickFrequency();
+    //    std::cout << "cost(s):" << cost << std::endl;
+    //}
 }
