@@ -189,19 +189,26 @@ cv::Mat matchTemplate(const cv::Mat  &angle,
     auto beta  = std::sin(rotation);
     auto size  = temp.edges.size();
 
+    std::vector<cv::Point> tmpEdge(size);
+    std::transform(temp.edges.begin(),
+                   temp.edges.end(),
+                   tmpEdge.begin(),
+                   [ & ](const cv::Point2f &point) {
+                       auto rx = point.x * alpha - point.y * beta;
+                       auto ry = point.x * beta + point.y * alpha;
+
+                       return cv::Point(cvRound(rx), cvRound(ry));
+                   });
+
     for (int py = 0; py < rect.height; py++) {
         for (int px = 0; px < rect.width; px++) {
             float tmpScore = 0;
             int   x        = rect.x + px;
             int   y        = rect.y + py;
             for (std::size_t i = 0; i < size; i++) {
-                const auto &point = temp.edges[ i ];
-                auto        rx    = point.x * alpha - point.y * beta;
-                auto        ry    = point.x * beta + point.y * alpha;
-
-                cv::Point pos(cvRound(rx), cvRound(ry));
-                pos.x += x;
-                pos.y += y;
+                auto pos  = tmpEdge[ i ];
+                pos.x    += x;
+                pos.y    += y;
                 if (pos.x < 0 || pos.y < 0 || pos.x >= angle.cols || pos.y >= angle.rows) {
                     continue;
                 }
