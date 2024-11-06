@@ -211,7 +211,7 @@ cv::Mat matchTemplate(const cv::Mat  &angle,
                 if (ra > CV_2PI) {
                     ra -= CV_2PI;
                 }
-                int index  = ceil(ra / 0.10472);
+                int index  = ceil(ra * 9.54927f); // ceil(ra / 0.10472f);
                 tmpScore  += COS[ index ];
                 // tmpScore += cos(ra);
             }
@@ -278,6 +278,9 @@ void buildEdge(const cv::Mat &src, cv::Mat &angle, cv::Mat &mag) {
     });
 }
 
+#pragma omp declare reduction(combine : std::vector<Candidate> : omp_out                           \
+                                  .insert(omp_out.end(), omp_in.begin(), omp_in.end()))
+
 std::vector<Candidate> matchTopLayel(const cv::Mat &dstTop,
                                      float          startAngle,
                                      float          spanAngle,
@@ -297,10 +300,12 @@ std::vector<Candidate> matchTopLayel(const cv::Mat &dstTop,
     cv::Mat mag;
     buildEdge(dstTop, angle, mag);
 
+#pragma omp parallel for reduction(combine : candidates)
     for (int i = 0; i < count; i++) {
         const auto rotation = startAngle + angleStep * i;
 
-        auto result = matchTemplate(angle, templateTop, rotation);
+        auto result =
+            matchTemplate(angle, templateTop, rotation, cv::Rect(0, 0, angle.cols, angle.rows));
 
         double    maxScore;
         cv::Point maxPos;
@@ -346,6 +351,7 @@ std::vector<Candidate> matchDownLayel(const std::vector<cv::Mat>   &pyramids,
 
     auto count = static_cast<int>(candidates.size());
 
+#pragma omp parallel for reduction(combine : levelMatched)
     for (std::size_t index = 0; index < count; index++) {
         auto pose    = candidates[ index ];
         bool matched = true;
