@@ -237,19 +237,19 @@ std::vector<cv::Mat> buildPyramid(const cv::Mat &src, int numLevels) {
     auto        alignedWidth  = cv::alignSize(srcWidth, (int)step);
     auto        alignedHeight = cv::alignSize(srcHeight, (int)step);
 
-    std::size_t paddWidth  = alignedWidth - srcWidth;
-    std::size_t paddHeight = alignedHeight - srcHeight;
+    std::size_t padWidth  = alignedWidth - srcWidth;
+    std::size_t padHeight = alignedHeight - srcHeight;
 
     // build pyramids
     std::vector<cv::Mat> pyramids;
     cv::Mat              templateImg = src;
-    if (0 != paddHeight || 0 != paddWidth) {
+    if (0 != padHeight || 0 != padWidth) {
         cv::copyMakeBorder(src,
                            templateImg,
                            0,
-                           (int)paddWidth,
+                           (int)padWidth,
                            0,
-                           (int)paddHeight,
+                           (int)padHeight,
                            cv::BORDER_REFLECT);
     }
 
@@ -288,7 +288,7 @@ void buildEdge(const cv::Mat &src, cv::Mat &angle, cv::Mat &mag) {
 #pragma omp declare reduction(combine : std::vector<Candidate> : omp_out                           \
                                   .insert(omp_out.end(), omp_in.begin(), omp_in.end()))
 
-std::vector<Candidate> matchTopLayel(const cv::Mat &dstTop,
+std::vector<Candidate> matchTopLayer(const cv::Mat &dstTop,
                                      float          startAngle,
                                      float          spanAngle,
                                      float          maxOverlap,
@@ -337,7 +337,7 @@ std::vector<Candidate> matchTopLayel(const cv::Mat &dstTop,
     return candidates;
 }
 
-std::vector<Candidate> matchDownLayel(const std::vector<cv::Mat>   &pyramids,
+std::vector<Candidate> matchDownLayer(const std::vector<cv::Mat>   &pyramids,
                                       const std::vector<Candidate> &candidates,
                                       double                        minScore,
                                       int                           subpixel,
@@ -504,7 +504,7 @@ std::vector<Pose> matchModel(const cv::Mat &dst,
     auto pyramids = buildPyramid(dst, numLevels);
 
     // compute top
-    const std::vector<Candidate> candidates = matchTopLayel(pyramids.back(),
+    const std::vector<Candidate> candidates = matchTopLayer(pyramids.back(),
                                                             angleStart,
                                                             angleExtent,
                                                             maxOverlap,
@@ -513,9 +513,9 @@ std::vector<Pose> matchModel(const cv::Mat &dst,
                                                             model,
                                                             numLevels);
 
-    // match candidate each layel
+    // match candidate each Layer
     std::vector<Candidate> matched =
-        matchDownLayel(pyramids, candidates, minScore, subpixel, model, numLevels);
+        matchDownLayer(pyramids, candidates, minScore, subpixel, model, numLevels);
 
     filterOverlap(matched, maxOverlap, model.templates.front().radius);
 
