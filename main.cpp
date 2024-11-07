@@ -1,17 +1,18 @@
 #include "edgesubpix.h"
 
-constexpr int    MIN_AREA  = 256;
-constexpr int    CANDIDATE = 5;
-constexpr float  INVALID   = -1.;
-constexpr double COS[]     = {
-    1,         0.994522,  0.978148,  0.951057,  0.913545,  0.866025,  0.809017,  0.743145,
-    0.669131,  0.587785,  0.5,       0.406737,  0.309017,  0.207912,  0.104528,  0,
-    -0.104529, -0.207912, -0.309017, -0.406737, -0.5,      -0.587785, -0.669131, -0.743145,
-    -0.809017, -0.866025, -0.913545, -0.951056, -0.978148, -0.994522, -1,        -0.994522,
-    -0.978148, -0.951056, -0.913545, -0.866025, -0.809017, -0.743145, -0.669131, -0.587785,
-    -0.5,      -0.406737, -0.309017, -0.207912, -0.104528, 0,         0.104528,  0.207912,
-    0.309017,  0.406737,  0.5,       0.587785,  0.669131,  0.743145,  0.809017,  0.866025,
-    0.913545,  0.951056,  0.978148,  0.9999,    1.};
+constexpr int   MIN_AREA  = 256;
+constexpr int   CANDIDATE = 5;
+constexpr float INVALID   = -1.;
+constexpr float F_2PI     = 6.283185307179586476925286766559f;
+constexpr float COS[]     = {
+    1.f,        0.994522f,  0.978148f,  0.951057f,  0.913545f,  0.866025f,  0.809017f,  0.743145f,
+    0.669131f,  0.587785f,  0.5f,       0.406737f,  0.309017f,  0.207912f,  0.104528f,  0.f,
+    -0.104529f, -0.207912f, -0.309017f, -0.406737f, -0.5f,      -0.587785f, -0.669131f, -0.743145f,
+    -0.809017f, -0.866025f, -0.913545f, -0.951056f, -0.978148f, -0.994522f, -1.f,       -0.994522f,
+    -0.978148f, -0.951056f, -0.913545f, -0.866025f, -0.809017f, -0.743145f, -0.669131f, -0.587785f,
+    -0.5f,      -0.406737f, -0.309017f, -0.207912f, -0.104528f, 0.f,        0.104528f,  0.207912f,
+    0.309017f,  0.406737f,  0.5f,       0.587785f,  0.669131f,  0.743145f,  0.809017f,  0.866025f,
+    0.913545f,  0.951056f,  0.978148f,  0.9999f,    1.f};
 
 struct Pose {
     float x;
@@ -164,10 +165,10 @@ cv::Mat matchTemplate(const cv::Mat &angle, const Template &temp, float rotation
 
                 auto ra = temp.angles[ i ] + rotation - angle.at<float>(pos);
                 ra      = fabs(ra);
-                if (ra > CV_2PI) {
-                    ra -= CV_2PI;
+                if (ra > F_2PI) {
+                    ra -= F_2PI;
                 }
-                int index  = ceil(ra / 0.10472);
+                int index  = static_cast<int>(ceil(ra * 9.54927f));
                 tmpScore  += COS[ index ];
                 // tmpScore += cos(ra);
             }
@@ -215,10 +216,10 @@ cv::Mat matchTemplate(const cv::Mat  &angle,
 
                 auto ra = temp.angles[ i ] + rotation - angle.at<float>(pos);
                 ra      = fabs(ra);
-                if (ra > CV_2PI) {
-                    ra -= CV_2PI;
+                if (ra > F_2PI) {
+                    ra -= F_2PI;
                 }
-                int index  = ceil(ra * 9.54927f); // ceil(ra / 0.10472f);
+                int index  = static_cast<int>(ceil(ra * 9.54927f)); // ceil(ra / 0.10472f);
                 tmpScore  += COS[ index ];
                 // tmpScore += cos(ra);
             }
@@ -231,11 +232,11 @@ cv::Mat matchTemplate(const cv::Mat  &angle,
 }
 
 std::vector<cv::Mat> buildPyramid(const cv::Mat &src, int numLevels) {
-    auto        srcWidth      = static_cast<std::size_t>(src.cols);
-    auto        srcHeight     = static_cast<std::size_t>(src.rows);
-    std::size_t step          = 1 << (numLevels - 1);
-    auto        alignedWidth  = cv::alignSize(srcWidth, (int)step);
-    auto        alignedHeight = cv::alignSize(srcHeight, (int)step);
+    auto srcWidth      = static_cast<std::size_t>(src.cols);
+    auto srcHeight     = static_cast<std::size_t>(src.rows);
+    auto step          = 1 << static_cast<std::size_t>(numLevels - 1);
+    auto alignedWidth  = cv::alignSize(srcWidth, (int)step);
+    auto alignedHeight = cv::alignSize(srcHeight, (int)step);
 
     std::size_t padWidth  = alignedWidth - srcWidth;
     std::size_t padHeight = alignedHeight - srcHeight;
@@ -254,7 +255,7 @@ std::vector<cv::Mat> buildPyramid(const cv::Mat &src, int numLevels) {
     }
 
     pyramids.emplace_back(std::move(templateImg));
-    for (std::size_t i = 0; i < numLevels - 1; i++) {
+    for (std::size_t i = 0; i < static_cast<std::size_t>(numLevels - 1); i++) {
         const auto &last = pyramids[ i ];
         cv::Mat     tmp;
         cv::resize(last, tmp, last.size() / 2, 0, 0, cv::INTER_AREA);
@@ -279,9 +280,9 @@ void buildEdge(const cv::Mat &src, cv::Mat &angle, cv::Mat &mag) {
         auto x = dx.at<short>(pos[ 0 ], pos[ 1 ]);
         auto y = dy.at<short>(pos[ 0 ], pos[ 1 ]);
 
-        pixel = atan2f(y, x);
-
-        mag.at<float>(pos[ 0 ], pos[ 1 ]) = sqrtf(x * x + y * y) / 4.f;
+        pixel                             = atan2f(y, x);
+        auto sqrMag                       = static_cast<float>(x * x + y * y);
+        mag.at<float>(pos[ 0 ], pos[ 1 ]) = sqrtf(sqrMag) / 4.f;
     });
 }
 
@@ -343,11 +344,13 @@ std::vector<Candidate> matchDownLayer(const std::vector<cv::Mat>   &pyramids,
                                       int                           subpixel,
                                       const Model                  &model,
                                       int                           numLevels) {
+    (void)(subpixel);
+
     std::vector<Candidate> levelMatched;
     std::vector<cv::Mat>   angles(numLevels - 1);
     std::vector<cv::Mat>   mags(numLevels - 1);
 
-    for (std::size_t i = 0; i < numLevels - 1; i++) {
+    for (std::size_t i = 0; i < static_cast<std::size_t>(numLevels - 1); i++) {
         cv::Mat angle;
         cv::Mat mag;
         buildEdge(pyramids[ i ], angle, mag);
@@ -356,7 +359,7 @@ std::vector<Candidate> matchDownLayer(const std::vector<cv::Mat>   &pyramids,
         mags[ i ]   = std::move(mag);
     }
 
-    auto count = static_cast<int>(candidates.size());
+    auto count = candidates.size();
 
 #pragma omp parallel for reduction(combine : levelMatched)
     for (std::size_t index = 0; index < count; index++) {
@@ -368,7 +371,7 @@ std::vector<Candidate> matchDownLayer(const std::vector<cv::Mat>   &pyramids,
             const auto     scoreThreshold = minScore * pow(0.9, currentLevel);
             const auto     angleStep      = currentTemp.angleStep;
             const auto     center         = pose.pos * 2.f;
-            const cv::Rect rect(center.x - 3, center.y - 3, 7, 7);
+            const cv::Rect rect(cvRound(center.x) - 3, cvRound(center.y) - 3, 7, 7);
 
             Candidate newCandidate;
             for (int i = -1; i <= 1; i++) {
@@ -492,6 +495,9 @@ std::vector<Pose> matchModel(const cv::Mat &dst,
                              bool           subpixel,
                              int            numLevels,
                              float          greediness) {
+    (void)(angleStep);
+    (void)(greediness);
+
     if (dst.empty() || model.templates.empty()) {
         return {};
     }
@@ -565,7 +571,7 @@ int main(int argc, const char *argv[]) {
     auto t1     = cv::getTickCount();
     auto model  = trainModel(src, -1, NONE, USE_POLARITY, {1, 10, 29, 5}, 10);
     auto t2     = cv::getTickCount();
-    auto result = matchModel(dst, model, 0, CV_2PI, -1, 0.9f, 2, 0.5f, false, -1, 0.9f);
+    auto result = matchModel(dst, model, 0, F_2PI, -1, 0.9f, 2, 0.5f, false, -1, 0.9f);
     auto t3     = cv::getTickCount();
 
     auto trainCost = double(t2 - t1) / cv::getTickFrequency();
