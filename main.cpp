@@ -168,7 +168,7 @@ cv::Mat matchTemplate(const cv::Mat &angle, const Template &temp, float rotation
                 if (ra > F_2PI) {
                     ra -= F_2PI;
                 }
-                int index  = static_cast<int>(ceil(ra * 9.54927f));
+                int index  = cvCeil(ra * 9.54927f);
                 tmpScore  += COS[ index ];
                 // tmpScore += cos(ra);
             }
@@ -219,7 +219,7 @@ cv::Mat matchTemplate(const cv::Mat  &angle,
                 if (ra > F_2PI) {
                     ra -= F_2PI;
                 }
-                int index  = static_cast<int>(ceil(ra * 9.54927f)); // ceil(ra / 0.10472f);
+                int index  = cvCeil(ra * 9.54927f); // ceil(ra / 0.10472f);
                 tmpScore  += COS[ index ];
                 // tmpScore += cos(ra);
             }
