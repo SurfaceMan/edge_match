@@ -53,7 +53,7 @@ enum Metric {
     IGNORE_GLOBAL_POLARITY,
 };
 
-enum Reduce { NONE, LOW, MEDIUM, HIGH, AUTO };
+enum Reduce { NONE = 0, LOW = 10, MEDIUM = 5, HIGH = 2, AUTO };
 
 struct EdgeParam {
     float sigma;
@@ -71,11 +71,38 @@ struct Model {
 
     cv::Mat               source;
     std::vector<Template> templates;
+    std::vector<Template> reducedTemplates;
 };
 
 // inline double sizeAngleStep(const cv::Size &size) {
 //     return atan(2. / std::max(size.width, size.height)) * 180. / CV_PI;
 // }
+
+Template downSample(Template &src, int step) {
+    auto size         = src.angles.size();
+    auto reduceCount  = size / step;
+    auto reserveCount = size - reduceCount;
+
+    std::vector<cv::Point2f> edges;
+    std::vector<float>       angles;
+
+    edges.reserve(reserveCount);
+    angles.reserve(reserveCount);
+
+    int count = 0;
+    for (std::size_t i = 0; i < size; i++) {
+        count++;
+        if (count == step) {
+            count = 0;
+            continue;
+        }
+
+        edges.push_back(src.edges[ i ]);
+        angles.push_back(src.angles[ i ]);
+    }
+
+    return {src.angleStep, src.radius, edges, angles};
+}
 
 inline double sizeAngleStep(const cv::Size &size) {
     const auto diameter = sqrt(size.width * size.width + size.height * size.height);
@@ -299,7 +326,8 @@ std::vector<Candidate> matchTopLayer(const cv::Mat &dstTop,
                                      int            numLevels) {
     std::vector<Candidate> candidates;
 
-    const auto &templateTop       = model.templates[ numLevels - 1 ];
+    const auto &templates         = NONE == model.reduce ? model.templates : model.reducedTemplates;
+    const auto &templateTop       = templates[ numLevels - 1 ];
     const auto  topScoreThreshold = minScore * pow(0.9, numLevels - 1);
     const auto  angleStep         = templateTop.angleStep;
     const auto  count             = static_cast<int>(spanAngle / angleStep) + 1;
@@ -359,7 +387,8 @@ std::vector<Candidate> matchDownLayer(const std::vector<cv::Mat>   &pyramids,
         mags[ i ]   = std::move(mag);
     }
 
-    auto count = candidates.size();
+    auto        count     = candidates.size();
+    const auto &templates = NONE == model.reduce ? model.templates : model.reducedTemplates;
 
 #pragma omp parallel for reduction(combine : levelMatched)
     for (std::size_t index = 0; index < count; index++) {
@@ -367,7 +396,7 @@ std::vector<Candidate> matchDownLayer(const std::vector<cv::Mat>   &pyramids,
         bool matched = true;
 
         for (int currentLevel = numLevels - 2; currentLevel >= 0; currentLevel--) {
-            const auto    &currentTemp    = model.templates[ currentLevel ];
+            const auto    &currentTemp    = templates[ currentLevel ];
             const auto     scoreThreshold = minScore * pow(0.9, currentLevel);
             const auto     angleStep      = currentTemp.angleStep;
             const auto     center         = pose.pos * 2.f;
@@ -470,7 +499,7 @@ Model trainModel(const cv::Mat &src,
     baseTemplate.radius    = radius;
     baseTemplate.angleStep = angleStep;
 
-    Model model{edgeParam, minMag, metric, reduce, radius, src, {}};
+    Model model{edgeParam, minMag, metric, reduce, radius, src, {}, {}};
     model.templates.emplace_back(std::move(baseTemplate));
     for (std::size_t i = 1; i < pyramids.size(); i++) {
         center /= 2.f;
@@ -479,6 +508,13 @@ Model trainModel(const cv::Mat &src,
         model.templates.emplace_back(buildTemplate(temImg, edgeParam, center));
         model.templates.back().radius = radius /= 2.f;
         model.templates.back().angleStep = angleStep *= 2.f;
+    }
+
+    if (NONE != reduce) {
+        model.reducedTemplates.reserve(model.templates.size());
+        for (auto &temp : model.templates) {
+            model.reducedTemplates.emplace_back(downSample(temp, reduce));
+        }
     }
 
     return model;
@@ -569,7 +605,7 @@ int main(int argc, const char *argv[]) {
     auto dst = cv::imread(argv[ 2 ], cv::IMREAD_GRAYSCALE);
 
     auto t1     = cv::getTickCount();
-    auto model  = trainModel(src, -1, NONE, USE_POLARITY, {1, 10, 29, 5}, 10);
+    auto model  = trainModel(src, -1, HIGH, USE_POLARITY, {1, 10, 29, 5}, 10);
     auto t2     = cv::getTickCount();
     auto result = matchModel(dst, model, 0, F_2PI, -1, 0.9f, 2, 0.5f, false, -1, 0.9f);
     auto t3     = cv::getTickCount();
