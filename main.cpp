@@ -210,12 +210,16 @@ cv::Mat matchTemplate(const cv::Mat &angle, const Template &temp, float rotation
 cv::Mat matchTemplate(const cv::Mat  &angle,
                       const Template &temp,
                       float           rotation,
-                      const cv::Rect &rect) {
+                      const cv::Rect &rect,
+                      float           minScore,
+                      float           greediness) {
     cv::Mat score(rect.size(), CV_32FC1);
 
     auto alpha = std::cos(rotation);
     auto beta  = std::sin(rotation);
     auto size  = temp.edges.size();
+    auto fSize = static_cast<float>(size);
+    auto rSize = 1 / fSize;
 
     std::vector<cv::Point> tmpEdge(size);
     std::transform(temp.edges.begin(),
@@ -227,6 +231,10 @@ cv::Mat matchTemplate(const cv::Mat  &angle,
 
                        return cv::Point(cvRound(rx), cvRound(ry));
                    });
+
+    auto pre    = minScore - 1.f;
+    auto scale1 = (1.f - greediness * minScore) / (1.f - greediness) * rSize;
+    auto scale2 = minScore * rSize;
 
     for (int py = 0; py < rect.height; py++) {
         for (int px = 0; px < rect.width; px++) {
@@ -249,9 +257,16 @@ cv::Mat matchTemplate(const cv::Mat  &angle,
                 int index  = cvCeil(ra * 9.54927f); // ceil(ra / 0.10472f);
                 tmpScore  += COS[ index ];
                 // tmpScore += cos(ra);
+
+                auto threshold    = std::min(pre + scale1 * i, scale2 * i);
+                auto currentScore = tmpScore / static_cast<float>(i);
+                if (currentScore < threshold) {
+                    tmpScore = 0.f;
+                    break;
+                }
             }
 
-            score.at<float>(py, px) = tmpScore / static_cast<float>(size);
+            score.at<float>(py, px) = tmpScore / fSize;
         }
     }
 
@@ -321,6 +336,7 @@ std::vector<Candidate> matchTopLayer(const cv::Mat &dstTop,
                                      float          spanAngle,
                                      float          maxOverlap,
                                      float          minScore,
+                                     float          greediness,
                                      int            maxCount,
                                      const Model   &model,
                                      int            numLevels) {
@@ -340,8 +356,12 @@ std::vector<Candidate> matchTopLayer(const cv::Mat &dstTop,
     for (int i = 0; i < count; i++) {
         const auto rotation = startAngle + angleStep * i;
 
-        auto result =
-            matchTemplate(angle, templateTop, rotation, cv::Rect(0, 0, angle.cols, angle.rows));
+        auto result = matchTemplate(angle,
+                                    templateTop,
+                                    rotation,
+                                    cv::Rect(0, 0, angle.cols, angle.rows),
+                                    minScore,
+                                    greediness);
 
         double    maxScore;
         cv::Point maxPos;
@@ -368,7 +388,8 @@ std::vector<Candidate> matchTopLayer(const cv::Mat &dstTop,
 
 std::vector<Candidate> matchDownLayer(const std::vector<cv::Mat>   &pyramids,
                                       const std::vector<Candidate> &candidates,
-                                      double                        minScore,
+                                      float                         minScore,
+                                      float                         greediness,
                                       int                           subpixel,
                                       const Model                  &model,
                                       int                           numLevels) {
@@ -405,7 +426,12 @@ std::vector<Candidate> matchDownLayer(const std::vector<cv::Mat>   &pyramids,
             Candidate newCandidate;
             for (int i = -1; i <= 1; i++) {
                 auto rotation = pose.angle + i * angleStep;
-                auto result   = matchTemplate(angles[ currentLevel ], currentTemp, rotation, rect);
+                auto result   = matchTemplate(angles[ currentLevel ],
+                                            currentTemp,
+                                            rotation,
+                                            rect,
+                                            minScore,
+                                            greediness);
 
                 double    maxScore;
                 cv::Point maxPos;
@@ -532,7 +558,6 @@ std::vector<Pose> matchModel(const cv::Mat &dst,
                              int            numLevels,
                              float          greediness) {
     (void)(angleStep);
-    (void)(greediness);
 
     if (dst.empty() || model.templates.empty()) {
         return {};
@@ -551,13 +576,14 @@ std::vector<Pose> matchModel(const cv::Mat &dst,
                                                             angleExtent,
                                                             maxOverlap,
                                                             minScore,
+                                                            greediness,
                                                             numMatches,
                                                             model,
                                                             numLevels);
 
     // match candidate each Layer
     std::vector<Candidate> matched =
-        matchDownLayer(pyramids, candidates, minScore, subpixel, model, numLevels);
+        matchDownLayer(pyramids, candidates, minScore, greediness, subpixel, model, numLevels);
 
     filterOverlap(matched, maxOverlap, model.templates.front().radius);
 
@@ -607,7 +633,7 @@ int main(int argc, const char *argv[]) {
     auto t1     = cv::getTickCount();
     auto model  = trainModel(src, -1, HIGH, USE_POLARITY, {1, 10, 29, 5}, 10);
     auto t2     = cv::getTickCount();
-    auto result = matchModel(dst, model, 0, F_2PI, -1, 0.9f, 2, 0.5f, false, -1, 0.9f);
+    auto result = matchModel(dst, model, 0, F_2PI, -1, 0.9f, 2, 0.5f, false, -1, 0.8f);
     auto t3     = cv::getTickCount();
 
     auto trainCost = double(t2 - t1) / cv::getTickFrequency();
