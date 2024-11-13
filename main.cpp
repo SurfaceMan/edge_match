@@ -49,7 +49,7 @@ struct Template {
 
 enum Metric {
     USE_POLARITY,
-    IGNORE_LOAL_POLARITY,
+    IGNORE_LOCAL_POLARITY,
     IGNORE_GLOBAL_POLARITY,
 };
 
@@ -212,7 +212,8 @@ cv::Mat matchTemplate(const cv::Mat  &angle,
                       float           rotation,
                       const cv::Rect &rect,
                       float           minScore,
-                      float           greediness) {
+                      float           greediness,
+                      Metric          metric) {
     cv::Mat score(rect.size(), CV_32FC1);
 
     auto alpha = std::cos(rotation);
@@ -254,18 +255,29 @@ cv::Mat matchTemplate(const cv::Mat  &angle,
                 if (ra > F_2PI) {
                     ra -= F_2PI;
                 }
-                int index  = cvCeil(ra * 9.54927f); // ceil(ra / 0.10472f);
-                tmpScore  += COS[ index ];
+                int  index      = cvCeil(ra * 9.54927f); // ceil(ra / 0.10472f);
+                auto pointScore = COS[ index ];
+                if (IGNORE_LOCAL_POLARITY == metric) {
+                    pointScore = abs(pointScore);
+                }
+                tmpScore += pointScore;
                 // tmpScore += cos(ra);
 
                 auto threshold    = std::min(pre + scale1 * i, scale2 * i);
                 auto currentScore = tmpScore / static_cast<float>(i);
+                if (IGNORE_GLOBAL_POLARITY == metric) {
+                    currentScore = abs(currentScore);
+                }
+
                 if (currentScore < threshold) {
                     tmpScore = 0.f;
                     break;
                 }
             }
 
+            if (IGNORE_GLOBAL_POLARITY == metric) {
+                tmpScore = abs(tmpScore);
+            }
             score.at<float>(py, px) = tmpScore / fSize;
         }
     }
@@ -361,7 +373,8 @@ std::vector<Candidate> matchTopLayer(const cv::Mat &dstTop,
                                     rotation,
                                     cv::Rect(0, 0, angle.cols, angle.rows),
                                     minScore,
-                                    greediness);
+                                    greediness,
+                                    model.metric);
 
         double    maxScore;
         cv::Point maxPos;
@@ -431,7 +444,8 @@ std::vector<Candidate> matchDownLayer(const std::vector<cv::Mat>   &pyramids,
                                             rotation,
                                             rect,
                                             minScore,
-                                            greediness);
+                                            greediness,
+                                            model.metric);
 
                 double    maxScore;
                 cv::Point maxPos;
