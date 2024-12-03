@@ -223,6 +223,9 @@ cv::Mat matchTemplate(const cv::Mat  &angle,
     auto size  = temp.edges.size();
     auto fSize = static_cast<float>(size);
     auto rSize = 1 / fSize;
+    if (rotation > CV_PI) {
+        rotation -= CV_2PI;
+    }
 
     std::vector<cv::Point> tmpEdge(size);
     std::transform(temp.edges.begin(),
@@ -266,8 +269,8 @@ cv::Mat matchTemplate(const cv::Mat  &angle,
                 tmpScore += pointScore;
                 // tmpScore += cos(ra);
 
-                auto threshold    = std::min(pre + scale1 * i, scale2 * i);
-                auto currentScore = tmpScore / static_cast<float>(i);
+                auto threshold    = std::min(pre + scale1 * (i + 1), scale2 * (i + 1));
+                auto currentScore = tmpScore / static_cast<float>(i + 1);
                 if (IGNORE_GLOBAL_POLARITY == metric) {
                     currentScore = abs(currentScore);
                 }
@@ -658,7 +661,7 @@ int main(int argc, const char *argv[]) {
     auto t1     = cv::getTickCount();
     auto model  = trainModel(src, -1, NONE, USE_POLARITY, {1, 21, 29, 5}, 10);
     auto t2     = cv::getTickCount();
-    auto result = matchModel(dst, model, 0, F_2PI, -1, 0.8f, 2, 0.5f, false, -1, 0.8f);
+    auto result = matchModel(dst, model, 0, F_2PI, -1, 0.8f, 2, 0.5f, false, -1, 0.0f);
     auto t3     = cv::getTickCount();
 
     auto trainCost = double(t2 - t1) / cv::getTickFrequency();
