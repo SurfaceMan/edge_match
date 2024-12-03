@@ -208,12 +208,14 @@ cv::Mat matchTemplate(const cv::Mat &angle, const Template &temp, float rotation
 }
 
 cv::Mat matchTemplate(const cv::Mat  &angle,
+                      const cv::Mat  &mag,
                       const Template &temp,
                       float           rotation,
                       const cv::Rect &rect,
                       float           minScore,
                       float           greediness,
-                      Metric          metric) {
+                      Metric          metric,
+                      uchar           minMag) {
     cv::Mat score(rect.size(), CV_32FC1);
 
     auto alpha = std::cos(rotation);
@@ -246,7 +248,8 @@ cv::Mat matchTemplate(const cv::Mat  &angle,
                 auto pos  = tmpEdge[ i ];
                 pos.x    += x;
                 pos.y    += y;
-                if (pos.x < 0 || pos.y < 0 || pos.x >= angle.cols || pos.y >= angle.rows) {
+                if (pos.x < 0 || pos.y < 0 || pos.x >= angle.cols || pos.y >= angle.rows ||
+                    mag.at<float>(pos) <= minMag) {
                     continue;
                 }
 
@@ -369,12 +372,14 @@ std::vector<Candidate> matchTopLayer(const cv::Mat &dstTop,
         const auto rotation = startAngle + angleStep * i;
 
         auto result = matchTemplate(angle,
+                                    mag,
                                     templateTop,
                                     rotation,
                                     cv::Rect(0, 0, angle.cols, angle.rows),
-                                    minScore,
+                                    topScoreThreshold,
                                     greediness,
-                                    model.metric);
+                                    model.metric,
+                                    model.minMag);
 
         double    maxScore;
         cv::Point maxPos;
@@ -440,12 +445,14 @@ std::vector<Candidate> matchDownLayer(const std::vector<cv::Mat>   &pyramids,
             for (int i = -1; i <= 1; i++) {
                 auto rotation = pose.angle + i * angleStep;
                 auto result   = matchTemplate(angles[ currentLevel ],
+                                            mags[ currentLevel ],
                                             currentTemp,
                                             rotation,
                                             rect,
-                                            minScore,
+                                            scoreThreshold,
                                             greediness,
-                                            model.metric);
+                                            model.metric,
+                                            model.minMag);
 
                 double    maxScore;
                 cv::Point maxPos;
@@ -545,7 +552,11 @@ Model trainModel(const cv::Mat &src,
         center /= 2.f;
 
         auto &temImg = pyramids[ i ];
-        model.templates.emplace_back(buildTemplate(temImg, edgeParam, center));
+        auto  temp   = buildTemplate(temImg, edgeParam, center);
+        if (temp.edges.empty()) {
+            break;
+        }
+        model.templates.emplace_back(temp);
         model.templates.back().radius = radius /= 2.f;
         model.templates.back().angleStep = angleStep *= 2.f;
     }
@@ -645,9 +656,9 @@ int main(int argc, const char *argv[]) {
     auto dst = cv::imread(argv[ 2 ], cv::IMREAD_GRAYSCALE);
 
     auto t1     = cv::getTickCount();
-    auto model  = trainModel(src, -1, HIGH, USE_POLARITY, {1, 10, 29, 5}, 10);
+    auto model  = trainModel(src, -1, NONE, USE_POLARITY, {1, 21, 29, 5}, 10);
     auto t2     = cv::getTickCount();
-    auto result = matchModel(dst, model, 0, F_2PI, -1, 0.9f, 2, 0.5f, false, -1, 0.8f);
+    auto result = matchModel(dst, model, 0, F_2PI, -1, 0.8f, 2, 0.5f, false, -1, 0.8f);
     auto t3     = cv::getTickCount();
 
     auto trainCost = double(t2 - t1) / cv::getTickFrequency();
