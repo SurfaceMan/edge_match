@@ -308,9 +308,9 @@ std::vector<cv::Mat> buildPyramid(const cv::Mat &src, int numLevels) {
         cv::copyMakeBorder(src,
                            templateImg,
                            0,
-                           (int)padWidth,
-                           0,
                            (int)padHeight,
+                           0,
+                           (int)padWidth,
                            cv::BORDER_REFLECT);
     }
 
