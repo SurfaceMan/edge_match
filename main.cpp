@@ -75,10 +75,6 @@ struct Model {
     std::vector<Template> reducedTemplates;
 };
 
-// inline double sizeAngleStep(const cv::Size &size) {
-//     return atan(2. / std::max(size.width, size.height)) * 180. / CV_PI;
-// }
-
 Template downSample(Template &src, int step) {
     auto size         = src.angles.size();
     auto reduceCount  = size / step;
@@ -103,11 +99,6 @@ Template downSample(Template &src, int step) {
     }
 
     return {src.angleStep, src.radius, edges, angles};
-}
-
-inline double sizeAngleStep(const cv::Size &size) {
-    const auto diameter = sqrt(size.width * size.width + size.height * size.height);
-    return atan(2. / diameter);
 }
 
 int computeLayers(const int width, const int height, const int minArea) {
@@ -167,45 +158,6 @@ Template buildTemplate(const cv::Mat     &src,
 
     std::for_each(points.begin(), points.end(), [ & ](cv::Point2f &point) { point -= offset; });
     return {0, 0, std::move(points), std::move(angles)};
-}
-
-cv::Mat matchTemplate(const cv::Mat &angle, const Template &temp, float rotation) {
-    cv::Mat score(angle.size(), CV_32FC1);
-
-    auto alpha = std::cos(rotation);
-    auto beta  = std::sin(rotation);
-    auto size  = temp.edges.size();
-
-    for (int y = 0; y < angle.rows; y++) {
-        for (int x = 0; x < angle.cols; x++) {
-            float tmpScore = 0;
-            for (std::size_t i = 0; i < size; i++) {
-                const auto &point = temp.edges[ i ];
-                auto        rx    = point.x * alpha - point.y * beta;
-                auto        ry    = point.x * beta + point.y * alpha;
-
-                cv::Point pos(cvRound(rx), cvRound(ry));
-                pos.x += x;
-                pos.y += y;
-                if (pos.x < 0 || pos.y < 0 || pos.x >= angle.cols || pos.y >= angle.rows) {
-                    continue;
-                }
-
-                auto ra = temp.angles[ i ] + rotation - angle.at<float>(pos);
-                ra      = fabs(ra);
-                if (ra > F_2PI) {
-                    ra -= F_2PI;
-                }
-                int index  = cvCeil(ra * 9.54927f);
-                tmpScore  += COS[ index ];
-                // tmpScore += cos(ra);
-            }
-
-            score.at<float>(y, x) = tmpScore / static_cast<float>(size);
-        }
-    }
-
-    return score;
 }
 
 cv::Mat matchTemplate(const cv::Mat  &angle,
@@ -659,7 +611,7 @@ int main(int argc, const char *argv[]) {
     auto dst = cv::imread(argv[ 2 ], cv::IMREAD_GRAYSCALE);
 
     auto t1     = cv::getTickCount();
-    auto model  = trainModel(src, -1, HIGH, USE_POLARITY, {1, 21, 29, 5}, 10);
+    auto model  = trainModel(src, -1, HIGH, USE_POLARITY, {1, 9, 18, 5}, 10);
     auto t2     = cv::getTickCount();
     auto result = matchModel(dst, model, 0, F_2PI, -1, 0.8f, 2, 0.5f, false, -1, 0.8f);
     auto t3     = cv::getTickCount();
@@ -670,13 +622,13 @@ int main(int argc, const char *argv[]) {
     auto matchCost = double(t3 - t2) / cv::getTickFrequency();
     std::cout << "match(s):" << matchCost << std::endl;
 
-    // cv::Mat color;
-    // cv::cvtColor(dst, color, cv::COLOR_GRAY2RGB);
+    cv::Mat color;
+    cv::cvtColor(dst, color, cv::COLOR_GRAY2RGB);
     for (const auto &pose : result) {
-        // drawEdge(color, pose, model.templates.front());
+        drawEdge(color, pose, model.templates.front());
         std::cout << pose.x << "," << pose.y << "," << pose.angle << "," << pose.score << std::endl;
     }
-    //
-    // cv::imshow("img", color);
-    // cv::waitKey();
+
+    cv::imshow("img", color);
+    cv::waitKey();
 }
