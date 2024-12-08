@@ -161,7 +161,7 @@ Template buildTemplate(const cv::Mat     &src,
         });
 
         points.insert(points.end(), edge.begin(), edge.end());
-        angles.insert(angles.begin(), subAngles.begin(), subAngles.end());
+        angles.insert(angles.end(), subAngles.begin(), subAngles.end());
     }
 
     std::for_each(points.begin(), points.end(), [ & ](cv::Point2f &point) { point -= offset; });
