@@ -1,4 +1,5 @@
 #include "edgesubpix.h"
+#include "gradient.h"
 
 constexpr int   MIN_AREA  = 256;
 constexpr int   CANDIDATE = 5;
@@ -218,11 +219,12 @@ cv::Mat matchTemplate(const cv::Mat  &angle,
                       uchar           minMag) {
     cv::Mat score(rect.size(), CV_32FC1);
 
-    auto alpha = std::cos(rotation);
-    auto beta  = std::sin(rotation);
-    auto size  = temp.edges.size();
-    auto fSize = static_cast<float>(size);
-    auto rSize = 1 / fSize;
+    auto alpha   = std::cos(rotation);
+    auto beta    = std::sin(rotation);
+    auto size    = temp.edges.size();
+    auto fSize   = static_cast<float>(size);
+    auto rSize   = 1 / fSize;
+    auto minMag2 = (ushort)minMag * minMag;
     if (rotation > CV_PI) {
         rotation -= CV_2PI;
     }
@@ -252,7 +254,7 @@ cv::Mat matchTemplate(const cv::Mat  &angle,
                 pos.x    += x;
                 pos.y    += y;
                 if (pos.x < 0 || pos.y < 0 || pos.x >= angle.cols || pos.y >= angle.rows ||
-                    mag.at<float>(pos) <= minMag) {
+                    mag.at<ushort>(pos) <= minMag2) {
                     continue;
                 }
 
@@ -330,19 +332,17 @@ void buildEdge(const cv::Mat &src, cv::Mat &angle, cv::Mat &mag) {
     cv::Mat blur;
     cv::GaussianBlur(src, blur, cv::Size{5, 5}, 0);
 
-    cv::Mat dx;
-    cv::Mat dy;
-    cv::spatialGradient(blur, dx, dy);
+    // cv::Mat dx;
+    // cv::Mat dy;
+    // cv::spatialGradient(blur, dx, dy);
+    cv::Mat grad;
+    gradient(blur, grad, mag);
 
-    angle = cv::Mat(dx.size(), CV_32FC1);
-    mag   = cv::Mat(dx.size(), CV_32FC1);
+    angle = cv::Mat(grad.size(), CV_32FC1);
     angle.forEach<float>([ & ](float &pixel, const int *pos) {
-        auto x = dx.at<short>(pos[ 0 ], pos[ 1 ]);
-        auto y = dy.at<short>(pos[ 0 ], pos[ 1 ]);
+        auto dir = grad.at<cv::Vec2s>(pos[ 0 ], pos[ 1 ]);
 
-        pixel                             = atan2f(y, x);
-        auto sqrMag                       = static_cast<float>(x * x + y * y);
-        mag.at<float>(pos[ 0 ], pos[ 1 ]) = sqrtf(sqrMag) / 4.f;
+        pixel = atan2f(dir[ 1 ], dir[ 0 ]);
     });
 }
 
@@ -659,9 +659,9 @@ int main(int argc, const char *argv[]) {
     auto dst = cv::imread(argv[ 2 ], cv::IMREAD_GRAYSCALE);
 
     auto t1     = cv::getTickCount();
-    auto model  = trainModel(src, -1, NONE, USE_POLARITY, {1, 21, 29, 5}, 10);
+    auto model  = trainModel(src, -1, HIGH, USE_POLARITY, {1, 21, 29, 5}, 10);
     auto t2     = cv::getTickCount();
-    auto result = matchModel(dst, model, 0, F_2PI, -1, 0.8f, 2, 0.5f, false, -1, 0.0f);
+    auto result = matchModel(dst, model, 0, F_2PI, -1, 0.8f, 2, 0.5f, false, -1, 0.8f);
     auto t3     = cv::getTickCount();
 
     auto trainCost = double(t2 - t1) / cv::getTickFrequency();
