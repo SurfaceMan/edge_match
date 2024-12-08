@@ -603,12 +603,16 @@ void drawEdge(cv::Mat &img, const Pose &pose, const Template &temp) {
 }
 
 int main(int argc, const char *argv[]) {
-    if (argc < 3) {
-        throw std::runtime_error("too few args");
-    }
+    cv::Mat src;
+    cv::Mat dst;
 
-    auto src = cv::imread(argv[ 1 ], cv::IMREAD_GRAYSCALE);
-    auto dst = cv::imread(argv[ 2 ], cv::IMREAD_GRAYSCALE);
+    if (argc < 3) {
+        src = cv::imread(std::string(IMG_DIR) + "/model3.png", cv::IMREAD_GRAYSCALE);
+        dst = cv::imread(std::string(IMG_DIR) + "/model3_src1.png", cv::IMREAD_GRAYSCALE);
+    } else {
+        src = cv::imread(argv[ 1 ], cv::IMREAD_GRAYSCALE);
+        dst = cv::imread(argv[ 2 ], cv::IMREAD_GRAYSCALE);
+    }
 
     auto t1     = cv::getTickCount();
     auto model  = trainModel(src, -1, HIGH, USE_POLARITY, {1, 9, 18, 5}, 10);
