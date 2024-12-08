@@ -1,13 +1,13 @@
 cmake_minimum_required(VERSION 3.12)
 
-project(subpix)
+project(edge_match)
 
 find_package(OpenCV REQUIRED)
 
 option(ENABLE_OPENMP "enable openmp" OFF)
 if(ENABLE_OPENMP)
         # find OpenMP
-        find_package(OpenMP REQUIRED)
+        find_package(OpenMP 4 REQUIRED)
 
         if(OPENMP_FOUND)
             set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${OpenMP_C_FLAGS}")
