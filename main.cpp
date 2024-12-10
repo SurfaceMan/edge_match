@@ -124,7 +124,7 @@ void nextMaxLoc(cv::Mat         &score,
     const auto clearRadius = alone * radius;
 
     // clear neighbor
-    cv::circle(score, pos, static_cast<int>(clearRadius), 0, -1);
+    cv::circle(score, pos, static_cast<int>(clearRadius), cv::Scalar(0), cv::FILLED);
 
     cv::minMaxLoc(score, nullptr, &maxScore, nullptr, &maxPos);
 }
