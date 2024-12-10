@@ -1,7 +1,7 @@
 #include "edgesubpix.h"
 #include "gradient.h"
 
-void compute_edge_points(cv::Mat &edge, const cv::Mat &mag, const cv::Mat &grad, float low) {
+void compute_edge_points(cv::Mat &edge, const cv::Mat &mag, const cv::Mat &grad, const float low) {
     const int X = grad.size().width;
     const int Y = grad.size().height;
 
@@ -31,7 +31,7 @@ void compute_edge_points(cv::Mat &edge, const cv::Mat &mag, const cv::Mat &grad,
 
             /* it can happen that two neighbor pixels have equal value and are both	maxima, for
             example when the edge is exactly between both pixels. in such cases, as an arbitrary
-            convention, the edge is marked on the left one when an horizontal max or below when a
+            convention, the edge is marked on the left one when a horizontal max or below when a
             vertical max. for	this the conditions are L < mod >= R and D < mod >= U,respectively.
             the comparisons are done using the function greater() instead of the operators > or >=
             so numbers differing only due to rounding errors are considered equal */
@@ -80,7 +80,7 @@ void compute_edge_points(cv::Mat &edge, const cv::Mat &mag, const cv::Mat &grad,
 void compute_edge_points_mask(cv::Mat       &edge,
                               const cv::Mat &mag,
                               const cv::Mat &grad,
-                              float          low,
+                              const float    low,
                               const cv::Mat &mask) {
     const int X = grad.size().width;
     const int Y = grad.size().height;
@@ -113,7 +113,7 @@ void compute_edge_points_mask(cv::Mat       &edge,
 
             /* it can happen that two neighbor pixels have equal value and are both	maxima, for
             example when the edge is exactly between both pixels. in such cases, as an arbitrary
-            convention, the edge is marked on the left one when an horizontal max or below when a
+            convention, the edge is marked on the left one when a horizontal max or below when a
             vertical max. for	this the conditions are L < mod >= R and D < mod >= U,respectively.
             the comparisons are done using the function greater() instead of the operators > or >=
             so numbers differing only due to rounding errors are considered equal */
@@ -380,7 +380,7 @@ void thresholds_with_hysteresis(std::vector<std::vector<cv::Point2f>> &points,
                                 const cv::Mat                         &mag,
                                 const cv::Mat                         &edge,
                                 const cv::Mat                         &grad,
-                                float                                  high) {
+                                const float                            high) {
     const int X = mag.size().width;
     const int Y = mag.size().height;
 
@@ -424,7 +424,7 @@ void thresholds_with_hysteresis(std::vector<std::vector<cv::Point2f>> &points,
             for (auto iter = preLink.rbegin(); iter != preLink.rend(); ++iter) {
                 const auto &pos = *iter;
                 mod             = mag.at<unsigned short>(pos);
-                auto rMod       = sqrtf(mod);
+                const auto rMod = sqrtf(mod);
                 path.emplace_back(edge.at<cv::Point2f>(pos));
                 const auto &posGrad = grad.at<cv::Vec2s>(pos);
                 dir.emplace_back(posGrad[ 0 ] / rMod, posGrad[ 1 ] / rMod);
@@ -433,14 +433,14 @@ void thresholds_with_hysteresis(std::vector<std::vector<cv::Point2f>> &points,
             {
                 path.emplace_back(edge.at<cv::Point2f>(lastPos));
                 const auto &posGrad = grad.at<cv::Vec2s>(lastPos);
-                float       rMod    = sqrtf(mod);
+                const float rMod    = sqrtf(mod);
                 dir.emplace_back(posGrad[ 0 ] / rMod, posGrad[ 1 ] / rMod);
             }
 
             /* follow the chain of edge points forwards */
             while (nextPos.x >= 0) {
-                mod       = mag.at<unsigned short>(nextPos);
-                auto rMod = sqrtf(mod);
+                mod             = mag.at<unsigned short>(nextPos);
+                const auto rMod = sqrtf(mod);
                 path.emplace_back(edge.at<cv::Point2f>(nextPos));
                 const auto &posGrad = grad.at<cv::Vec2s>(nextPos);
                 dir.emplace_back(posGrad[ 0 ] / rMod, posGrad[ 1 ] / rMod);
@@ -463,12 +463,12 @@ void EdgePoint(const cv::Mat                         &img,
                float                                  sigma,
                float                                  low,
                float                                  high,
-               cv::InputArray                         _mask) {
-    bool haveMask = !_mask.empty();
+               cv::InputArray                         mask) {
+    bool haveMask = !mask.empty();
 
     if (haveMask) {
-        int mtype = _mask.type();
-        CV_Assert((mtype == CV_8UC1 || mtype == CV_8SC1) && _mask.sameSize(img));
+        int type = mask.type();
+        CV_Assert((type == CV_8UC1 || type == CV_8SC1) && mask.sameSize(img));
     }
 
     cv::Mat blured;
@@ -493,7 +493,7 @@ void EdgePoint(const cv::Mat                         &img,
 
     // start = cv::getTickCount();
     if (haveMask) {
-        compute_edge_points_mask(edge, mag, grad, low, _mask.getMat());
+        compute_edge_points_mask(edge, mag, grad, low, mask.getMat());
     } else {
         compute_edge_points(edge, mag, grad, low);
     }

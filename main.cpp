@@ -31,7 +31,7 @@ struct Candidate {
         : score(0)
         , angle(0) {}
 
-    Candidate(double _score, float _angle, cv::Point2f _pos)
+    Candidate(const double _score, const float _angle, const cv::Point2f _pos)
         : score(_score)
         , angle(_angle)
         , pos(_pos) {}
@@ -75,10 +75,10 @@ struct Model {
     std::vector<Template> reducedTemplates;
 };
 
-Template downSample(Template &src, int step) {
-    auto size         = src.angles.size();
-    auto reduceCount  = size / step;
-    auto reserveCount = size - reduceCount;
+Template downSample(const Template &src, const int step) {
+    const auto size         = src.angles.size();
+    const auto reduceCount  = size / step;
+    const auto reserveCount = size - reduceCount;
 
     std::vector<cv::Point2f> edges;
     std::vector<float>       angles;
@@ -116,15 +116,15 @@ int computeLayers(const int width, const int height, const int minArea) {
 
 void nextMaxLoc(cv::Mat         &score,
                 const cv::Point &pos,
-                float            radius,
-                float            maxOverlap,
+                const float      radius,
+                const float      maxOverlap,
                 double          &maxScore,
                 cv::Point       &maxPos) {
     const auto alone       = 1.f - maxOverlap;
     const auto clearRadius = alone * radius;
 
     // clear neighbor
-    cv::circle(score, pos, (int)clearRadius, 0, -1);
+    cv::circle(score, pos, static_cast<int>(clearRadius), 0, -1);
 
     cv::minMaxLoc(score, nullptr, &maxScore, nullptr, &maxPos);
 }
@@ -165,20 +165,20 @@ cv::Mat matchTemplate(const cv::Mat  &angle,
                       const Template &temp,
                       float           rotation,
                       const cv::Rect &rect,
-                      float           minScore,
-                      float           greediness,
-                      Metric          metric,
-                      uchar           minMag) {
+                      const float     minScore,
+                      const float     greediness,
+                      const Metric    metric,
+                      const uchar     minMag) {
     cv::Mat score(rect.size(), CV_32FC1);
 
-    auto alpha   = std::cos(rotation);
-    auto beta    = std::sin(rotation);
-    auto size    = temp.edges.size();
-    auto fSize   = static_cast<float>(size);
-    auto rSize   = 1 / fSize;
-    auto minMag2 = (ushort)minMag * minMag;
+    const auto alpha   = std::cos(rotation);
+    const auto beta    = std::sin(rotation);
+    const auto size    = temp.edges.size();
+    const auto fSize   = static_cast<float>(size);
+    const auto rSize   = 1 / fSize;
+    const auto minMag2 = static_cast<ushort>(minMag) * minMag;
     if (rotation > CV_PI) {
-        rotation -= CV_2PI;
+        rotation -= F_2PI;
     }
 
     std::vector<cv::Point> tmpEdge(size);
@@ -186,21 +186,21 @@ cv::Mat matchTemplate(const cv::Mat  &angle,
                    temp.edges.end(),
                    tmpEdge.begin(),
                    [ & ](const cv::Point2f &point) {
-                       auto rx = point.x * alpha - point.y * beta;
-                       auto ry = point.x * beta + point.y * alpha;
+                       const auto rx = point.x * alpha - point.y * beta;
+                       const auto ry = point.x * beta + point.y * alpha;
 
                        return cv::Point(cvRound(rx), cvRound(ry));
                    });
 
-    auto pre    = minScore - 1.f;
-    auto scale1 = (1.f - greediness * minScore) / (1.f - greediness) * rSize;
-    auto scale2 = minScore * rSize;
+    const auto pre    = minScore - 1.f;
+    const auto scale1 = (1.f - greediness * minScore) / (1.f - greediness) * rSize;
+    const auto scale2 = minScore * rSize;
 
     for (int py = 0; py < rect.height; py++) {
         for (int px = 0; px < rect.width; px++) {
-            float tmpScore = 0;
-            int   x        = rect.x + px;
-            int   y        = rect.y + py;
+            float     tmpScore = 0;
+            const int x        = rect.x + px;
+            const int y        = rect.y + py;
             for (std::size_t i = 0; i < size; i++) {
                 auto pos  = tmpEdge[ i ];
                 pos.x    += x;
@@ -215,16 +215,17 @@ cv::Mat matchTemplate(const cv::Mat  &angle,
                 if (ra > F_2PI) {
                     ra -= F_2PI;
                 }
-                int  index      = cvCeil(ra * 9.54927f); // ceil(ra / 0.10472f);
-                auto pointScore = COS[ index ];
+                const int index      = cvCeil(ra * 9.54927f); // ceil(ra / 0.10472f);
+                auto      pointScore = COS[ index ];
                 if (IGNORE_LOCAL_POLARITY == metric) {
                     pointScore = abs(pointScore);
                 }
                 tmpScore += pointScore;
                 // tmpScore += cos(ra);
 
-                auto threshold    = std::min(pre + scale1 * (i + 1), scale2 * (i + 1));
-                auto currentScore = tmpScore / static_cast<float>(i + 1);
+                const auto fIndex       = static_cast<float>(i + 1);
+                const auto threshold    = std::min(pre + scale1 * fIndex, scale2 * fIndex);
+                auto       currentScore = tmpScore / fIndex;
                 if (IGNORE_GLOBAL_POLARITY == metric) {
                     currentScore = abs(currentScore);
                 }
@@ -245,15 +246,15 @@ cv::Mat matchTemplate(const cv::Mat  &angle,
     return score;
 }
 
-std::vector<cv::Mat> buildPyramid(const cv::Mat &src, int numLevels) {
-    auto srcWidth      = static_cast<std::size_t>(src.cols);
-    auto srcHeight     = static_cast<std::size_t>(src.rows);
-    auto step          = 1 << static_cast<std::size_t>(numLevels - 1);
-    auto alignedWidth  = cv::alignSize(srcWidth, (int)step);
-    auto alignedHeight = cv::alignSize(srcHeight, (int)step);
+std::vector<cv::Mat> buildPyramid(const cv::Mat &src, const int numLevels) {
+    const auto srcWidth      = static_cast<std::size_t>(src.cols);
+    const auto srcHeight     = static_cast<std::size_t>(src.rows);
+    const auto step          = 1 << static_cast<std::size_t>(numLevels - 1);
+    const auto alignedWidth  = cv::alignSize(srcWidth, step);
+    const auto alignedHeight = cv::alignSize(srcHeight, step);
 
-    std::size_t padWidth  = alignedWidth - srcWidth;
-    std::size_t padHeight = alignedHeight - srcHeight;
+    const std::size_t padWidth  = alignedWidth - srcWidth;
+    const std::size_t padHeight = alignedHeight - srcHeight;
 
     // build pyramids
     std::vector<cv::Mat> pyramids;
@@ -262,9 +263,9 @@ std::vector<cv::Mat> buildPyramid(const cv::Mat &src, int numLevels) {
         cv::copyMakeBorder(src,
                            templateImg,
                            0,
-                           (int)padHeight,
+                           static_cast<int>(padHeight),
                            0,
-                           (int)padWidth,
+                           static_cast<int>(padWidth),
                            cv::BORDER_REFLECT);
     }
 
@@ -302,19 +303,19 @@ void buildEdge(const cv::Mat &src, cv::Mat &angle, cv::Mat &mag) {
                                   .insert(omp_out.end(), omp_in.begin(), omp_in.end()))
 
 std::vector<Candidate> matchTopLayer(const cv::Mat &dstTop,
-                                     float          startAngle,
-                                     float          spanAngle,
-                                     float          maxOverlap,
-                                     float          minScore,
-                                     float          greediness,
-                                     int            maxCount,
+                                     const float    startAngle,
+                                     const float    spanAngle,
+                                     const float    maxOverlap,
+                                     const float    minScore,
+                                     const float    greediness,
+                                     const int      maxCount,
                                      const Model   &model,
-                                     int            numLevels) {
+                                     const int      numLevels) {
     std::vector<Candidate> candidates;
 
     const auto &templates         = NONE == model.reduce ? model.templates : model.reducedTemplates;
     const auto &templateTop       = templates[ numLevels - 1 ];
-    const auto  topScoreThreshold = minScore * pow(0.9, numLevels - 1);
+    const auto  topScoreThreshold = minScore * powf(0.9f, static_cast<float>(numLevels - 1));
     const auto  angleStep         = templateTop.angleStep;
     const auto  count             = static_cast<int>(spanAngle / angleStep) + 1;
 
@@ -324,7 +325,7 @@ std::vector<Candidate> matchTopLayer(const cv::Mat &dstTop,
 
 #pragma omp parallel for reduction(combine : candidates)
     for (int i = 0; i < count; i++) {
-        const auto rotation = startAngle + angleStep * i;
+        const auto rotation = startAngle + angleStep * static_cast<float>(i);
 
         auto result = matchTemplate(angle,
                                     mag,
@@ -391,14 +392,14 @@ std::vector<Candidate> matchDownLayer(const std::vector<cv::Mat>   &pyramids,
 
         for (int currentLevel = numLevels - 2; currentLevel >= 0; currentLevel--) {
             const auto    &currentTemp    = templates[ currentLevel ];
-            const auto     scoreThreshold = minScore * pow(0.9, currentLevel);
+            const auto     scoreThreshold = minScore * powf(0.9f, static_cast<float>(currentLevel));
             const auto     angleStep      = currentTemp.angleStep;
             const auto     center         = pose.pos * 2.f;
             const cv::Rect rect(cvRound(center.x) - 3, cvRound(center.y) - 3, 7, 7);
 
             Candidate newCandidate;
             for (int i = -1; i <= 1; i++) {
-                auto rotation = pose.angle + i * angleStep;
+                auto rotation = pose.angle + static_cast<float>(i) * angleStep;
                 auto result   = matchTemplate(angles[ currentLevel ],
                                             mags[ currentLevel ],
                                             currentTemp,
@@ -439,9 +440,9 @@ std::vector<Candidate> matchDownLayer(const std::vector<cv::Mat>   &pyramids,
     return levelMatched;
 }
 
-void filterOverlap(std::vector<Candidate> &candidates, float maxOverlap, float radius) {
-    float      minDist = radius * radius * maxOverlap * maxOverlap;
-    const auto size    = candidates.size();
+void filterOverlap(std::vector<Candidate> &candidates, const float maxOverlap, const float radius) {
+    const float minDist = radius * radius * maxOverlap * maxOverlap;
+    const auto  size    = candidates.size();
     for (std::size_t i = 0; i < size; i++) {
         auto &candidate = candidates[ i ];
         if (candidate.score < 0) {
@@ -454,8 +455,8 @@ void filterOverlap(std::vector<Candidate> &candidates, float maxOverlap, float r
                 continue;
             }
 
-            auto delta = candidate.pos - refCandidate.pos;
-            auto dist  = delta.dot(delta);
+            auto       delta = candidate.pos - refCandidate.pos;
+            const auto dist  = delta.dot(delta);
             if (dist > minDist) {
                 continue;
             }
@@ -528,15 +529,15 @@ Model trainModel(const cv::Mat &src,
 
 std::vector<Pose> matchModel(const cv::Mat &dst,
                              const Model   &model,
-                             float          angleStart,
-                             float          angleExtent,
-                             float          angleStep,
-                             float          minScore,
-                             int            numMatches,
-                             float          maxOverlap,
-                             bool           subpixel,
+                             const float    angleStart,
+                             const float    angleExtent,
+                             const float    angleStep,
+                             const float    minScore,
+                             const int      numMatches,
+                             const float    maxOverlap,
+                             const bool     subpixel,
                              int            numLevels,
-                             float          greediness) {
+                             const float    greediness) {
     (void)(angleStep);
 
     if (dst.empty() || model.templates.empty()) {
@@ -548,7 +549,7 @@ std::vector<Pose> matchModel(const cv::Mat &dst,
         numLevels = templateLevel;
     }
 
-    auto pyramids = buildPyramid(dst, numLevels);
+    const auto pyramids = buildPyramid(dst, numLevels);
 
     // compute top
     const std::vector<Candidate> candidates = matchTopLayer(pyramids.back(),
@@ -577,8 +578,10 @@ std::vector<Pose> matchModel(const cv::Mat &dst,
                 continue;
             }
 
-            result.emplace_back(
-                Pose{candidate.pos.x, candidate.pos.y, candidate.angle, (float)candidate.score});
+            result.emplace_back(Pose{candidate.pos.x,
+                                     candidate.pos.y,
+                                     candidate.angle,
+                                     static_cast<float>(candidate.score)});
         }
 
         std::sort(result.begin(), result.end(), [](const Pose &a, const Pose &b) {
@@ -590,13 +593,13 @@ std::vector<Pose> matchModel(const cv::Mat &dst,
 }
 
 void drawEdge(cv::Mat &img, const Pose &pose, const Template &temp) {
-    auto alpha = std::cos(pose.angle);
-    auto beta  = std::sin(pose.angle);
+    const auto alpha = std::cos(pose.angle);
+    const auto beta  = std::sin(pose.angle);
 
     for (const auto &point : temp.edges) {
-        auto      rx = point.x * alpha - point.y * beta + pose.x;
-        auto      ry = point.x * beta + point.y * alpha + pose.y;
-        cv::Point pos(cvRound(rx), cvRound(ry));
+        const auto      rx = point.x * alpha - point.y * beta + pose.x;
+        const auto      ry = point.x * beta + point.y * alpha + pose.y;
+        const cv::Point pos(cvRound(rx), cvRound(ry));
 
         cv::circle(img, pos, 1, cv::Scalar(0, 0, 255));
     }
@@ -620,10 +623,10 @@ int main(int argc, const char *argv[]) {
     auto result = matchModel(dst, model, 0, F_2PI, -1, 0.8f, 2, 0.5f, false, -1, 0.8f);
     auto t3     = cv::getTickCount();
 
-    auto trainCost = double(t2 - t1) / cv::getTickFrequency();
+    auto trainCost = static_cast<double>(t2 - t1) / cv::getTickFrequency();
     std::cout << "train(s):" << trainCost << std::endl;
 
-    auto matchCost = double(t3 - t2) / cv::getTickFrequency();
+    auto matchCost = static_cast<double>(t3 - t2) / cv::getTickFrequency();
     std::cout << "match(s):" << matchCost << std::endl;
 
     cv::Mat color;

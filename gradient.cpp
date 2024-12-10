@@ -15,16 +15,16 @@ using namespace cv;
  */
 
 template <typename T>
-static inline void spatialGradientKernel_vec(T       &vx,
-                                             T       &vy,
-                                             const T &v00,
-                                             const T &v01,
-                                             const T &v02,
-                                             const T &v10,
-                                             const T &v12,
-                                             const T &v20,
-                                             const T &v21,
-                                             const T &v22) {
+void spatialGradientKernel_vec(T       &vx,
+                               T       &vy,
+                               const T &v00,
+                               const T &v01,
+                               const T &v02,
+                               const T &v10,
+                               const T &v12,
+                               const T &v20,
+                               const T &v21,
+                               const T &v22) {
     // vx = (v22 - v00) + (v02 - v20) + 2 * (v12 - v10)
     // vy = (v22 - v00) + (v20 - v02) + 2 * (v21 - v01)
     T tmp_add = v_sub(v22, v00), tmp_sub = v_sub(v02, v20), tmp_x = v_sub(v12, v10),
@@ -35,16 +35,16 @@ static inline void spatialGradientKernel_vec(T       &vx,
 }
 
 template <typename T>
-static inline void spatialGradientKernel(T       &vx,
-                                         T       &vy,
-                                         const T &v00,
-                                         const T &v01,
-                                         const T &v02,
-                                         const T &v10,
-                                         const T &v12,
-                                         const T &v20,
-                                         const T &v21,
-                                         const T &v22) {
+void spatialGradientKernel(T       &vx,
+                           T       &vy,
+                           const T &v00,
+                           const T &v01,
+                           const T &v02,
+                           const T &v10,
+                           const T &v12,
+                           const T &v20,
+                           const T &v21,
+                           const T &v22) {
     // vx = (v22 - v00) + (v02 - v20) + 2 * (v12 - v10)
     // vy = (v22 - v00) + (v20 - v02) + 2 * (v21 - v01)
     T tmp_add = v22 - v00, tmp_sub = v02 - v20, tmp_x = v12 - v10, tmp_y = v21 - v01;
@@ -53,15 +53,14 @@ static inline void spatialGradientKernel(T       &vx,
     vy = (tmp_add - tmp_sub + tmp_y + tmp_y) >> 2;
 }
 
-template <typename U, typename T>
-static inline void magKernel_vec(U &mag, const T &vx, const T &vy) {
+template <typename U, typename T> void magKernel_vec(U &mag, const T &vx, const T &vy) {
     auto normX = v_abs(vx);
     auto normY = v_abs(vy);
 
     mag = normX * normX + normY * normY;
 }
 
-template <typename U, typename T> static inline void magKernel(U &mag, const T &vx, const T &vy) {
+template <typename U, typename T> void magKernel(U &mag, const T &vx, const T &vy) {
     auto normX = abs(vx);
     auto normY = abs(vy);
     mag        = static_cast<uint16_t>(normX * normX + normY + normY);
